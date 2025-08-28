@@ -141,3 +141,21 @@ def fair_odds_from_prob(p):
         return 0
     dec = 1.0 / p
     return decimal_to_american(dec)
+
+def american_to_prob(odds):
+    """Convert American odds to probability (idempotent helper)"""
+    if odds is None: 
+        return None
+    o = float(odds)
+    return 100.0/(o+100.0) if o > 0 else (-o)/(100.0 - o)
+
+def no_vig_two_way(odds_a, odds_b):
+    """Calculate no-vig probabilities from two American odds (idempotent helper)"""
+    pa = american_to_prob(odds_a)
+    pb = american_to_prob(odds_b)
+    if not pa or not pb: 
+        return None, None
+    s = pa + pb
+    if s == 0: 
+        return None, None
+    return pa/s, pb/s

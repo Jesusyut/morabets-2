@@ -11,7 +11,7 @@ from copy import deepcopy
 from typing import Dict, Any, List, Tuple, Optional
 from contextual import get_contextual_hit_rate
 from fantasy import get_fantasy_hit_rate
-from probability import american_to_implied, fair_probs_from_two_sided, fair_odds_from_prob
+from probability import american_to_implied, fair_probs_from_two_sided, fair_odds_from_prob, american_to_prob, no_vig_two_way
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,53 @@ PREFERRED_BOOKMAKER_KEYS: List[str] = [
                         "fanduel,draftkings,betmgm,caesars,pointsbetus").split(",")
     if b.strip()
 ]
+
+SELECTED_BOOKS = {"draftkings", "fanduel", "betmgm"}  # keep small to reduce noise
+
+def best_two_sided_prices(prices):
+    """Find best home/away odds from list of price dicts"""
+    # prices: list of dicts like {"book":"draftkings","home":-120,"away":+100}
+    # returns (best_home_odds, best_away_odds)
+    home_best = None
+    away_best = None
+    for p in prices:
+        if p.get("book") not in SELECTED_BOOKS: 
+            continue
+        h = p.get("home")
+        a = p.get("away")
+        if h is not None:
+            if home_best is None or h > home_best:  # less negative / more positive is better
+                home_best = h
+        if a is not None:
+            if away_best is None or a > away_best:
+                away_best = a
+    return home_best, away_best
+
+def total_consensus(totals):
+    """Calculate consensus total line and no-vig probabilities"""
+    # totals: list of dicts {"book":"draftkings","line":9.5,"over":-110,"under":-105}
+    lines = []
+    over_under_pairs = []
+    for t in totals:
+        if t.get("book") not in SELECTED_BOOKS:
+            continue
+        line = t.get("line")
+        o = t.get("over")
+        u = t.get("under")
+        if line is not None:
+            lines.append(float(line))
+        if o is not None and u is not None:
+            over_under_pairs.append((o, u))
+    line_avg = round(sum(lines)/len(lines), 1) if lines else None
+    # use the first decent pair for no-vig (or median if many)
+    pair = None
+    if over_under_pairs:
+        over_under_pairs.sort(key=lambda x: (x[0]+x[1]))  # arbitrary stable pick
+        pair = over_under_pairs[len(over_under_pairs)//2]
+    over_fair = under_fair = None
+    if pair:
+        over_fair, under_fair = no_vig_two_way(pair[0], pair[1])
+    return line_avg, over_fair, under_fair
 
 # ---------- pairing & normalization helpers (from working rebuild) ----------
 def _norm_point(val) -> Optional[str]:
@@ -467,6 +514,31 @@ def get_mlb_game_environment_map():
                             moneyline_info = moneyline_lookup.get(matchup_key, {})
                             favored_team = moneyline_info.get("favored_team")
                             
+                            # Calculate no-vig probabilities for moneyline
+                            home_best, away_best = best_two_sided_prices([{
+                                "book": bookmaker.get("key", "").lower(),
+                                "home": moneyline_info.get("home_odds"),
+                                "away": moneyline_info.get("away_odds")
+                            }])
+                            home_fair, away_fair = (None, None)
+                            favorite = None
+                            if home_best is not None and away_best is not None:
+                                home_fair, away_fair = no_vig_two_way(home_best, away_best)
+                                if home_fair is not None and away_fair is not None:
+                                    favorite = "home" if home_fair > away_fair else "away"
+
+                            # Calculate no-vig probabilities for totals
+                            total_line, over_fair, under_fair = total_consensus([{
+                                "book": bookmaker.get("key", "").lower(),
+                                "line": total_point,
+                                "over": over_odds,
+                                "under": under_odds
+                            }])
+                            high_scoring = False
+                            if total_line is not None:
+                                # label high scoring by line OR fair prob of Over
+                                high_scoring = (total_line >= 9.0) or (over_fair is not None and over_fair > 0.55)
+
                             env_map[matchup_key] = {
                                 "environment": label,
                                 "total": total_point,
@@ -474,7 +546,20 @@ def get_mlb_game_environment_map():
                                 "under_odds": under_odds,
                                 "favored_team": favored_team,
                                 "home_team": home_abbr,
-                                "away_team": away_abbr
+                                "away_team": away_abbr,
+                                "no_vig": {
+                                    "moneyline": {
+                                        "home_prob": round(home_fair, 3) if home_fair is not None else None,
+                                        "away_prob": round(away_fair, 3) if away_fair is not None else None,
+                                        "favorite": favorite  # "home"/"away"/None
+                                    },
+                                    "totals": {
+                                        "line": total_line,
+                                        "over_prob": round(over_fair, 3) if over_fair is not None else None,
+                                        "under_prob": round(under_fair, 3) if under_fair is not None else None,
+                                        "high_scoring": high_scoring
+                                    }
+                                }
                             }
                             
                             fav_indicator = f" (Fav: {favored_team})" if favored_team else ""
