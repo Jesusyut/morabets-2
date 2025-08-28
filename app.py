@@ -41,45 +41,48 @@ SPORT_KEYS = {
     "nhl": "icehockey_nhl",
 }
 
-# Map Odds API market keys -> your internal 'stat' names
-MARKET_TO_STAT = {
-    # MLB (extend these as needed)
-    "player_hits": "batter_hits",
-    "player_home_runs": "batter_home_runs",
-    "player_total_bases": "batter_total_bases",
+# Use Odds API market keys (left) -> internal stat keys (right)
+MLB_PROP_MARKETS = {
+    "batter_hits": "batter_hits",
+    "batter_home_runs": "batter_home_runs",
+    "batter_total_bases": "batter_total_bases",
     "pitcher_strikeouts": "pitcher_strikeouts",
-    "player_rbis": "rbis",
-    "player_runs": "runs",
-    # Example NFL/NBA/NHL mappings you can fill later
-    # "player_points": "points",
-    # "player_assists": "assists",
-    # "player_rebounds": "rebounds",
-    # "player_shots_on_goal": "shots_on_goal",
+    "batter_rbis": "rbis",
+    "batter_runs_scored": "runs",
+    # (Optional extras as you roll them in)
+    # "batter_hits_runs_rbis": "hrr",
+    # "batter_walks": "batter_walks",
+    # "batter_stolen_bases": "stolen_bases",
 }
 
-def _mk_matchup(away_team: str, home_team: str) -> str:
-    # Keep your existing convention AWAY@HOME, but abbreviate if mapping exists
-    return f"{_abbr(away_team)}@{_abbr(home_team)}"
+def _date_range_utc(date_iso: str | None):
+    if not date_iso:
+        return None, None
+    # Interpret date as local (America/Phoenix) midnight-to-midnight, then to UTC
+    # Phoenix is UTC-7 year-round (no DST)
+    try:
+        y, m, d = [int(x) for x in date_iso.split("-")]
+        start_local = datetime(y, m, d, 0, 0, 0)
+        end_local   = start_local + timedelta(days=1)
+        # Convert to UTC by adding 7 hours (Phoenix UTC-7)
+        start_utc = (start_local + timedelta(hours=7)).replace(tzinfo=timezone.utc)
+        end_utc   = (end_local + timedelta(hours=7)).replace(tzinfo=timezone.utc)
+        return start_utc.isoformat().replace("+00:00", "Z"), end_utc.isoformat().replace("+00:00", "Z")
+    except Exception:
+        return None, None
+
+def _abbr(team, TEAM_ABBR=None):
+    if TEAM_ABBR and team in TEAM_ABBR:
+        return TEAM_ABBR[team]
+    return team
 
 def fetch_player_prop_offers_flat(league: str = "mlb",
                                   date_iso: str | None = None,
                                   books: list[str] | None = None,
                                   markets: list[str] | None = None) -> list[dict]:
     """
-    Flat player-prop offers with explicit sides for no-vig pairing.
-
-    Returns a list of dicts shaped like:
-      {
-        "event_key": str,           # event id from Odds API
-        "matchup": "AWY@HOME",
-        "league": league,           # echo input
-        "player": "Name Surname",
-        "stat": "batter_hits",      # internal name via MARKET_TO_STAT
-        "line": 0.5,                # point
-        "side": "over"|"under",
-        "odds": -135,               # american int
-        "book": "draftkings"        # bookmaker key/slug
-      }
+    Return flat offers with explicit side+book so we can de-vig:
+      { event_key, matchup, league, player, stat, line, side, odds, book }
     """
     ODDS_API_KEY = os.getenv("ODDS_API_KEY")
     if not ODDS_API_KEY:
@@ -89,102 +92,95 @@ def fetch_player_prop_offers_flat(league: str = "mlb",
     if not sport_key:
         raise ValueError(f"Unsupported league: {league}")
 
-    # Default books and markets (tight list to avoid junk)
+    # Default markets/books
+    if league.lower() == "mlb":
+        valid_markets = list(MLB_PROP_MARKETS.keys())
+    else:
+        valid_markets = markets or []  # fill later for NFL/NBA/NHL
+
     if not books:
-        # Slugs must match Odds API bookmaker keys
-        books = [b.strip() for b in os.getenv("BOOKS", "draftkings,fanduel,betmgm").split(",") if b.strip()]
+        books = [b.strip().lower() for b in os.getenv("BOOKS", "draftkings,fanduel,betmgm").split(",") if b.strip()]
 
-    if not markets:
-        # Only include markets that map cleanly to your internal stats
-        default_mlb = ["player_hits", "player_home_runs", "player_total_bases", "pitcher_strikeouts", "player_rbis", "player_runs"]
-        markets = default_mlb if league.lower() == "mlb" else list(MARKET_TO_STAT.keys())
+    # 1) List events for the window (free; no quota cost)
+    ev_params = {"apiKey": ODDS_API_KEY}
+    start_utc, end_utc = _date_range_utc(date_iso)
+    if start_utc and end_utc:
+        ev_params["commenceTimeFrom"] = start_utc
+        ev_params["commenceTimeTo"] = end_utc
 
-    # Time window: Odds API lets you just grab upcoming odds; we still allow a date anchor if you pass one
-    # If date_iso is None, no filter; otherwise prefer events on that date (UTC day)
-    # We'll still fetch a single page and filter locally by commence_time date match
-    params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": "us",
-        "oddsFormat": "american",
-        "dateFormat": "iso",
-        "bookmakers": ",".join(books),
-        "markets": ",".join(markets),
-    }
-    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
+    ev_url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/events"
+    ev = requests.get(ev_url, params=ev_params, timeout=20)
+    ev.raise_for_status()
+    events = ev.json() or []
 
-    resp = requests.get(url, params=params, timeout=20)
-    resp.raise_for_status()
-    events = resp.json() or []
-
-    wanted_date = None
-    if date_iso:
-        try:
-            wanted_date = datetime.fromisoformat(date_iso).date()
-        except Exception:
-            # Accept YYYY-MM-DD; be forgiving
-            try:
-                wanted_date = datetime.strptime(date_iso, "%Y-%m-%d").date()
-            except Exception:
-                wanted_date = None
+    # Build quick lookup for matchup
+    try:
+        from team_abbreviations import TEAM_ABBREVIATIONS as TEAM_ABBR
+    except Exception:
+        TEAM_ABBR = None
 
     out: list[dict] = []
+    if not events:
+        return out  # nothing to fetch today
 
-    for ev in events:
-        # Optional local date gate if requested
-        if wanted_date:
-            try:
-                ct = datetime.fromisoformat(ev.get("commence_time").replace("Z", "+00:00")).date()
-                if ct != wanted_date:
-                    continue
-            except Exception:
-                pass
+    # 2) For each event, call the **event odds** endpoint with prop markets
+    for e in events:
+        event_id = e.get("id")
+        if not event_id:
+            continue
+        away = e.get("away_team") or ""
+        home = e.get("home_team") or ""
+        matchup = f"{_abbr(away, TEAM_ABBR)}@{_abbr(home, TEAM_ABBR)}"
 
-        event_id = ev.get("id") or f"{ev.get('away_team')}@{ev.get('home_team')}:{ev.get('commence_time')}"
-        away = ev.get("away_team") or ""
-        home = ev.get("home_team") or ""
-        matchup = _mk_matchup(away, home)
+        eo_params = {
+            "apiKey": ODDS_API_KEY,
+            "regions": "us",
+            "oddsFormat": "american",
+            "dateFormat": "iso",
+            "bookmakers": ",".join(books),
+            "markets": ",".join(valid_markets),
+        }
+        eo_url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/events/{event_id}/odds"
+        try:
+            resp = requests.get(eo_url, params=eo_params, timeout=20)
+            resp.raise_for_status()
+        except requests.HTTPError as http_err:
+            # 404 or no markets? skip silently; 422 shouldn't happen here
+            continue
 
-        for bm in (ev.get("bookmakers") or []):
+        data = resp.json() or {}
+        for bm in (data.get("bookmakers") or []):
             book_key = (bm.get("key") or bm.get("title") or "").lower().replace(" ", "_")
-            if book_key not in [b.lower() for b in books]:
+            if book_key not in books:
                 continue
-
             for mk in (bm.get("markets") or []):
-                market_key = mk.get("key") or mk.get("market_key") or ""
-                if market_key not in markets:
+                mkey = mk.get("key")
+                internal_stat = MLB_PROP_MARKETS.get(mkey)
+                if not internal_stat:
                     continue
-
-                stat = MARKET_TO_STAT.get(market_key)
-                if not stat:
-                    continue
-
                 for oc in (mk.get("outcomes") or []):
-                    name = (oc.get("name") or "").lower()   # "over" or "under" expected
-                    if name not in ("over", "under"):
+                    side = (oc.get("name") or "").lower()  # "over" | "under" expected
+                    if side not in ("over", "under"):
                         continue
-                    price = oc.get("price")
-                    point = oc.get("point")
-                    # Player name often lives in 'description' for player props
                     player = oc.get("description") or oc.get("participant") or oc.get("player") or ""
-                    if player == "" or point is None or price is None:
+                    point = oc.get("point")
+                    price = oc.get("price")
+                    if not player or point is None or price is None:
                         continue
                     try:
-                        odds_int = int(price)
-                        line_val = float(point)
+                        out.append({
+                            "event_key": str(event_id),
+                            "matchup": matchup,
+                            "league": league.lower(),
+                            "player": player,
+                            "stat": internal_stat,
+                            "line": float(point),
+                            "side": side,
+                            "odds": int(price),
+                            "book": book_key,
+                        })
                     except Exception:
                         continue
-
-                    out.append({
-                        "event_key": str(event_id),
-                        "matchup": matchup,
-                        "league": league.lower(),
-                        "player": player,
-                        "stat": stat,
-                        "line": line_val,
-                        "side": name,         # "over" / "under"
-                        "odds": odds_int,     # american odds
-                        "book": book_key,
-                    })
 
     return out
 
@@ -1036,7 +1032,15 @@ def get_props():
             markets = [m.strip() for m in markets_qs.split(",")] if markets_qs else None
 
             raw_offers = fetch_player_prop_offers_flat(league=league, date_iso=date_iso, books=books, markets=markets)
+            logger.info(f"[NOVIG] Fetched {len(raw_offers)} raw offers for {league}")
+            
+            if not raw_offers:
+                logger.warning("[NOVIG] No raw offers available, returning empty response")
+                return jsonify({}), 200
+                
             grouped = build_props_novig(league, raw_offers, prefer_books=books)
+            total_props = sum(len(props) for props in grouped.values())
+            logger.info(f"[NOVIG] Built {total_props} props from {len(raw_offers)} offers across {len(grouped)} matchups")
 
             # server-side probability filter to keep junk out of UI lists
             if min_prob > 0:
