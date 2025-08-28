@@ -1,191 +1,94 @@
 """
 No-Vig Mode: Market pairing and prop building without enrichment
 """
-from typing import Dict, List, Any, Optional, Tuple
 from collections import defaultdict
-from decimal import Decimal, InvalidOperation
-from novig import novig_two_way, american_to_prob, is_valid_odds
+from typing import Dict, List, Any, Optional, Tuple
+from novig import novig_two_way
 
-# Markets that work with the API and have consistent structure
-ALLOWED_MARKETS = [
-    "batter_hits",
-    "batter_home_runs", 
-    "batter_total_bases",
-    "pitcher_strikeouts",
-    "pitcher_earned_runs",
-    "pitcher_outs",
-    "pitcher_hits_allowed"
-]
+DEFAULT_BOOKS = ["draftkings", "fanduel", "betmgm"]
 
-def _normalize_point(val) -> Optional[str]:
-    """Normalize prop line so '0.5' pairs with '0.50' (3 dp string)"""
-    if val is None:
-        return None
+ALLOWED_MARKETS = {
+    "mlb": {
+        "batter_hits": (0.5, 3.5),
+        "batter_home_runs": (0.5, 1.5),
+        "batter_total_bases": (0.5, 3.5),
+        "pitcher_strikeouts": (1.5, 12.5),
+        # add more as needed (e.g., rbis, runs) if the feed exposes them
+    }
+}
+
+def _market_ok(league: str, stat: str, line: float) -> bool:
+    lo_hi = ALLOWED_MARKETS.get(league, {}).get(stat)
+    if not lo_hi:
+        return False
+    lo, hi = lo_hi
     try:
-        return f"{Decimal(str(val)).quantize(Decimal('0.001'))}"
-    except (InvalidOperation, ValueError, TypeError):
-        s = str(val).strip()
-        return s if s else None
+        f = float(line)
+    except Exception:
+        return False
+    return lo <= f <= hi
 
-def _resolve_side_and_player(name: Optional[str], desc: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-    """Extract side (over/under) and player name from outcome fields"""
-    n = (name or "").strip()
-    d = (desc or "").strip()
-    ln, ld = n.lower(), d.lower()
-    
-    # Check for exact matches first
-    if ln in ("over", "under"):
-        return ln, d or n
-    if ld in ("over", "under"):
-        return ld, n or d
-    
-    # Check for partial matches
-    if "over" in ln:
-        return "over", d or n
-    if "under" in ln:
-        return "under", d or n
-    if "over" in ld:
-        return "over", n or d
-    if "under" in ld:
-        return "under", n or d
-    
-    return None, None
-
-def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tuple[str, str, Optional[str]], Dict[str, Optional[Dict[str, Any]]]]:
+def build_props_novig(
+    league: str,
+    raw_offers: List[Dict[str, Any]],
+    prefer_books: Optional[List[str]] = None
+) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Pair over/under outcomes for each player+stat+line combination.
-    Returns: (player, stat_key, point_key) -> {'over': {price, book}|None, 'under': {...}|None}
-    Prefers FanDuel when duplicates occur.
-    """
-    sidebook = defaultdict(lambda: {"over": None, "under": None})
-    
-    for bookmaker in bookmakers or []:
-        book_name = (bookmaker.get("key") or bookmaker.get("title") or "").strip().lower()
-        
-        for market in bookmaker.get("markets") or []:
-            if market.get("key") != stat_key:
-                continue
-                
-            for outcome in market.get("outcomes") or []:
-                side, player = _resolve_side_and_player(outcome.get("name"), outcome.get("description"))
-                
-                if side not in ("over", "under") or not player:
-                    continue
-                    
-                price = outcome.get("price")
-                if not is_valid_odds(price):
-                    continue
-                    
-                point = _normalize_point(outcome.get("point"))
-                key = (player, stat_key, point)
-                
-                # Prefer FanDuel, otherwise keep first seen
-                current = sidebook[key][side]
-                keep = current is None or current.get("book") != "fanduel"
-                
-                if keep:
-                    sidebook[key][side] = {
-                        "price": int(price),
-                        "book": book_name
-                    }
-    
-    return sidebook
-
-def build_props_novig(league: str, offers: List[Dict[str, Any]], prefer_books: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Build props with no-vig calculations from flat offers.
-    
-    Args:
-        offers: List of flat offers with player, stat, line, side, odds, book
-        min_prob: Minimum probability threshold (0.0 to 1.0) for filtering
-    
+    raw_offers items must contain:
+      event_key, matchup, player, stat, line, side('over'|'under'), odds, book
     Returns:
-        List of props with fair probabilities calculated
+      { matchup: [ {player, stat, line, odds, shop, fair:{book, prob:{over,under}}} ] }
     """
-    # Group offers by player+stat+line, preserving matchup info
-    grouped = defaultdict(lambda: {"over": None, "under": None, "matchup": None})
-    
-    for offer in offers:
-        player = offer.get("player", "").strip()
-        stat = offer.get("stat", "").strip()
-        line = _normalize_point(offer.get("line"))
-        side = offer.get("side", "").lower()
-        odds = offer.get("odds")
-        book = offer.get("book", "").strip()
-        matchup = offer.get("matchup", "").strip()
-        
-        if not all([player, stat, line, side in ("over", "under"), is_valid_odds(odds)]):
+    books = [b.lower() for b in (prefer_books or DEFAULT_BOOKS)]
+    by_key_book: Dict[Tuple, Dict[str, Any]] = defaultdict(dict)
+
+    for o in raw_offers:
+        book = (o.get("book") or "").lower()
+        if book not in books:
             continue
-            
-        key = (player, stat, line)
-        
-        # Prefer FanDuel, otherwise keep first seen
-        current = grouped[key][side]
-        keep = current is None or current.get("book") != "fanduel"
-        
-        if keep:
-            grouped[key][side] = {
-                "price": int(odds),
-                "book": book
-            }
-            # Store matchup info
-            if not grouped[key]["matchup"]:
-                grouped[key]["matchup"] = matchup
-    
-    # Build props with no-vig calculations and group by matchup
-    grouped_props = {}
-    
-    for (player, stat, line), sides in grouped.items():
-        over = sides.get("over")
-        under = sides.get("under")
-        matchup = sides.get("matchup")
-        
-        # Skip if no valid sides
-        if not over and not under:
+        stat = o.get("stat")
+        line = o.get("line")
+        if stat is None or line is None or not _market_ok(league, stat, line):
             continue
-        
-        # Use matchup from offers, fallback to simple key
-        matchup_key = matchup if matchup else f"{league.upper()} Game - {player}"
-        
-        if matchup_key not in grouped_props:
-            grouped_props[matchup_key] = []
-        
-        prop = {
-            "player": player,
+        k = (o["event_key"], o["matchup"], o["player"], stat, line, book)
+        e = by_key_book[k]
+        e.update({
+            "event_key": o["event_key"],
+            "matchup": o["matchup"],
+            "player": o["player"],
             "stat": stat,
             "line": line,
-            "side": "over" if over else "under",
-            "odds": (over or under)["price"],
-            "book": (over or under)["book"],
-            "shop": {},
-            "fair": {"prob": {"over": 0.0, "under": 0.0}}
+            "book": book
+        })
+        side = (o.get("side") or "").lower()
+        if side == "over":
+            e["over_odds"] = int(o["odds"])
+        elif side == "under":
+            e["under_odds"] = int(o["odds"])
+
+    best: Dict[Tuple, Dict[str, Any]] = {}
+    for (ek, mu, pl, st, ln, bk), e in by_key_book.items():
+        if "over_odds" not in e or "under_odds" not in e:
+            continue
+        p_over, p_under = novig_two_way(e["over_odds"], e["under_odds"])
+        if p_over is None:
+            continue
+        key = (ek, mu, pl, st, ln)
+        cand = {
+            "matchup": mu,
+            "player": pl,
+            "stat": st,
+            "line": ln,
+            "odds": e["over_odds"],   # keep legacy display
+            "shop": bk,
+            "fair": {"book": bk, "prob": {"over": p_over, "under": p_under}},
         }
-        
-        # Populate shop data
-        if over:
-            prop["shop"]["over"] = {"american": over["price"], "book": over["book"]}
-        if under:
-            prop["shop"]["under"] = {"american": under["price"], "book": under["book"]}
-        
-        # Calculate fair probabilities
-        if over and under:
-            # Both sides available - use no-vig
-            p_over, p_under = novig_two_way(over["price"], under["price"])
-            prop["fair"]["prob"]["over"] = round(p_over, 4)
-            prop["fair"]["prob"]["under"] = round(p_under, 4)
-            prop["fair"]["book"] = over["book"] if over["book"] == "fanduel" else under["book"]
-        else:
-            # Single side - use implied probability
-            single_side = over or under
-            p = american_to_prob(single_side["price"])
-            if over:
-                prop["fair"]["prob"]["over"] = round(p, 4)
-                prop["fair"]["prob"]["under"] = round(1.0 - p, 4)
-            else:
-                prop["fair"]["prob"]["under"] = round(p, 4)
-                prop["fair"]["prob"]["over"] = round(1.0 - p, 4)
-            prop["fair"]["book"] = single_side["book"]
-        
-        grouped_props[matchup_key].append(prop)
-    
-    return grouped_props
+        score = abs(p_over - 0.5)
+        prev = best.get(key)
+        if not prev or score > abs(prev["fair"]["prob"]["over"] - 0.5):
+            best[key] = cand
+
+    out: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for (_, mu, _, _, _), prop in best.items():
+        out[mu].append(prop)
+    return out

@@ -17,7 +17,6 @@ from odds_api import fetch_player_props, parse_game_data, enrich_player_props
 from enrichment import load_props_from_file
 from probability import implied_probability, calculate_edge, kelly_bet_size, calculate_parlay_edge
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
-import build_props_novig
 from pairing import build_props_novig
 
 from team_abbreviations import get_team_abbreviation, format_matchup, TEAM_ABBREVIATIONS
