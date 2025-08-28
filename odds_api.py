@@ -6,9 +6,15 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from decimal import Decimal, InvalidOperation
+from typing import Dict, Any, List, Tuple, Optional
 from contextual import get_contextual_hit_rate
 from fantasy import get_fantasy_hit_rate
-from probability import fair_probs_from_two_sided, fair_odds_from_prob
+from probability import (
+    american_to_implied,
+    fair_probs_from_two_sided,
+    fair_odds_from_prob,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +24,136 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 # Preferred sportsbooks for filtering
 PREFERRED_SPORTSBOOKS = ["draftkings", "fanduel", "betmgm"]
 VALID_BOOKS = {"DraftKings", "FanDuel", "BetMGM"}
+
+# Use bookmaker *keys* (lowercase). You can override with ODDS_BOOKMAKERS env var.
+PREFERRED_BOOKMAKER_KEYS: List[str] = [
+    b.strip() for b in (os.getenv("ODDS_BOOKMAKERS") or
+                        "fanduel,draftkings,betmgm,caesars,pointsbetus").split(",")
+    if b.strip()
+]
+
+def _norm_point(val) -> Optional[str]:
+    """Normalize prop line so '0.5' pairs with '0.50' etc. (3 dp)."""
+    if val is None:
+        return None
+    try:
+        return f"{Decimal(str(val)).quantize(Decimal('0.001'))}"
+    except (InvalidOperation, ValueError, TypeError):
+        s = str(val).strip()
+        return s if s else None
+
+def _resolve_side_and_player(name: Optional[str], desc: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Books flip which field holds 'Over/Under' vs player name.
+    Return (side, player_name) with side in {'over','under'}.
+    """
+    n = (name or "").strip(); d = (desc or "").strip()
+    ln, ld = n.lower(), d.lower()
+    if ln in ("over", "under"): return ln, d or n
+    if ld in ("over", "under"): return ld, n or d
+    if "over" in ln:  return "over",  d or n
+    if "under" in ln: return "under", d or n
+    if "over" in ld:  return "over",  n or d
+    if "under" in ld: return "under", n or d
+    return None, None
+
+def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tuple[str, str, Optional[str]], Dict[str, Optional[Dict[str, Any]]]]:
+    """
+    Build a map for this market:
+      (player, stat, point_key) -> { "over": {price, book}, "under": {price, book} }
+    Prefer FanDuel on clashes; otherwise keep first seen.
+    """
+    sidebook = defaultdict(lambda: {"over": None, "under": None})
+    for bk in bookmakers or []:
+        book_name = (bk.get("key") or bk.get("title") or "").strip().lower()
+        for m in bk.get("markets") or []:
+            if m.get("key") != stat_key:
+                continue
+            for o in m.get("outcomes") or []:
+                side, player = _resolve_side_and_player(o.get("name"), o.get("description"))
+                if side not in ("over", "under") or not player:
+                    continue
+                price = o.get("price")
+                if price is None:
+                    continue
+                point = _norm_point(o.get("point"))
+                key = (player, stat_key, point)
+                keep = sidebook[key][side] is None or sidebook[key][side].get("book") != "fanduel"
+                if keep:
+                    sidebook[key][side] = {"price": int(price), "book": book_name}
+    return sidebook
+
+def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
+    """
+    Fill row["fair"]["prob"] with:
+      - no-vig if both shop sides present
+      - implied fallback if only one side present (other = 1 - p)
+    Also attach fair american odds & record source book where possible.
+    """
+    shop = row.get("shop") or {}
+    over_am = (shop.get("over")  or {}).get("american")
+    under_am = (shop.get("under") or {}).get("american")
+
+    row.setdefault("fair", {})
+    row["fair"].setdefault("prob", {"over": 0.0, "under": 0.0})
+
+    # No-vig (both sides)
+    if over_am is not None and under_am is not None:
+        p_over, p_under = fair_probs_from_two_sided(over_am, under_am)
+        if p_over is not None and p_under is not None:
+            row["fair"]["prob"]["over"]  = round(float(p_over), 4)
+            row["fair"]["prob"]["under"] = round(float(p_under), 4)
+            row["fair"]["american"] = {
+                "over":  fair_odds_from_prob(p_over),
+                "under": fair_odds_from_prob(p_under),
+            }
+            row["fair"]["book"] = (shop.get("over") or {}).get("book") or (shop.get("under") or {}).get("book") or ""
+            return
+
+    # Implied fallback from single side or generic 'odds'
+    odds = row.get("odds")
+    if odds is not None and over_am is None and under_am is None:
+        over_am = odds  # treat generic as Over
+
+    if over_am is not None and under_am is None:
+        p = american_to_implied(over_am)
+        row["fair"]["prob"]["over"]  = round(p, 4)
+        row["fair"]["prob"]["under"] = round(1.0 - p, 4)
+        row["fair"]["book"] = (shop.get("over") or {}).get("book") or (row.get("bookmaker") or "")
+        return
+
+    if under_am is not None and over_am is None:
+        p = american_to_implied(under_am)
+        row["fair"]["prob"]["under"] = round(p, 4)
+        row["fair"]["prob"]["over"]  = round(1.0 - p, 4)
+        row["fair"]["book"] = (shop.get("under") or {}).get("book") or (row.get("bookmaker") or "")
+        return
+
+def _event_odds(event_id: str, markets: List[str]) -> Dict[str, Any]:
+    """
+    Fetch event odds (player props). Try with bookmaker KEYS first, then fallback
+    without the 'bookmakers' filter if nothing returns.
+    """
+    base_params = {
+        "apiKey": ODDS_API_KEY,
+        "regions": "us",
+        "oddsFormat": "american",
+        "markets": ",".join(markets),
+    }
+    params = dict(base_params)
+    if PREFERRED_BOOKMAKER_KEYS:
+        params["bookmakers"] = ",".join(PREFERRED_BOOKMAKER_KEYS)
+
+    r = requests.get(f"{BASE_URL}/sports/baseball_mlb/events/{event_id}/odds", params=params, timeout=20)
+    r.raise_for_status()
+    data = r.json() or {}
+
+    # Fallback: retry without 'bookmakers' if nothing came back
+    if not (data.get("bookmakers") or []):
+        r2 = requests.get(f"{BASE_URL}/sports/baseball_mlb/events/{event_id}/odds", params=base_params, timeout=20)
+        r2.raise_for_status()
+        data = r2.json() or {}
+    return data
 
 def get_favored_team(game):
     """
@@ -393,14 +529,6 @@ def fetch_player_props():
     print(f"[DEBUG] Using verified markets: {markets_batch_1 + markets_batch_2}")
     
     all_markets = [markets_batch_1, markets_batch_2]
-    PREFERRED_BOOKS = ["FanDuel","DraftKings","BetMGM","Caesars","PointsBetUS"]
-
-    def _keep(old, new):
-        # Prefer FanDuel, otherwise keep the first seen
-        if old is None: return True
-        if old.get("book") != "FanDuel" and new.get("book") == "FanDuel":
-            return True
-        return False
 
     for event in events:
         eid = event.get("id")
@@ -422,94 +550,50 @@ def fetch_player_props():
                 if batch_idx > 0:
                     time.sleep(1)
                 
-                odds_resp = requests.get(
-                    f"{BASE_URL}/sports/baseball_mlb/events/{eid}/odds",
-                    params={
-                        "apiKey": ODDS_API_KEY,
-                        "regions": "us",
-                        "markets": ",".join(markets),
-                        "oddsFormat": "american",
-                        "bookmakers": ",".join(PREFERRED_SPORTSBOOKS)
-                    },
-                    timeout=20
-                )
-                odds_resp.raise_for_status()
-                data = odds_resp.json()
+                data = _event_odds(eid, markets)
                 
                 # Log successful market response
                 if data.get("bookmakers"):
                     successful_markets = [m.get('key') for m in data.get('bookmakers', [])[0].get('markets', [])]
                     print(f"[DEBUG] Event {eid} batch {batch_idx} fetched props for markets: {successful_markets}")
                 
-                # While scanning outcomes, capture side+player+line and store best price by side:
-                for book in data.get("bookmakers", []):
-                    book_name = (book.get("title") or book.get("key") or "").strip()
-                    stat_key = None
-                    
-                    for market in book.get("markets", []) or []:
-                        stat_key = market.get("key")  # e.g. "batter_hits", "player_total_bases"
-                        for o in (market.get("outcomes") or []):
-                            name = (o.get("name") or "").strip()         # sometimes player or "Over"/"Under"
-                            desc = (o.get("description") or "").strip()  # the other one
-                            price = o.get("price")
-                            point = o.get("point")
-
-                            # Resolve side and player
-                            side = player = None
-                            if desc.lower() in ("over","under"):
-                                side = desc.lower(); player = name
-                            elif name.lower() in ("over","under"):
-                                side = name.lower(); player = desc
-
-                            if side not in ("over","under") or not player or price is None:
-                                continue
-
-                            key = (player, stat_key, point)
-                            cand = {"price": float(price), "book": book_name}
-                            if _keep(sidebook[key][side], cand):
-                                sidebook[key][side] = cand
+                # Use the new helper function to pair outcomes
+                for stat_key in markets:
+                    batch_sidebook = _pair_outcomes(data.get("bookmakers", []), stat_key)
+                    for key, sides in batch_sidebook.items():
+                        if sides["over"] or sides["under"]:
+                            sidebook[key] = sides
                                 
             except Exception as e:
                 print(f"[ERROR] Failed to fetch props for event {eid} batch {batch_idx}: {e}")
                 continue
 
-        # After scanning the event, build rows exactly like you do now, but compute fair only when both sides exist:
-        props_for_matchup = []  # your existing list for this matchup
+        # After scanning the event, build rows with fair odds calculation
+        props_for_matchup = []
 
         for (player, stat_key, point), sides in sidebook.items():
             over = sides.get("over")
             under = sides.get("under")
 
             row = {
-                # KEEP your existing fields here (contextual_hit_rate, fantasy_hit_rate, favored flags, etc.)
                 "player": player,
-                "stat":   stat_key,          # you currently emit "batter_hits" etc.
+                "stat":   stat_key,
                 "line":   point,
                 "odds":   (over or under or {}).get("price"),
                 "bookmaker": (over or under or {}).get("book"),
             }
 
-            # Only attach fair when BOTH sides are present for the SAME line
-            if over and under:
-                p_over, p_under = fair_probs_from_two_sided(over["price"], under["price"])
-                if p_over is not None and p_under is not None:
-                    # (Optional) include the paired prices for debugging/consistency
-                    row["shop"] = {
-                        "over":  {"american": int(over["price"]),  "book": over["book"]},
-                        "under": {"american": int(under["price"]), "book": under["book"]},
-                    }
-                    row.setdefault("fair", {})
-                    row["fair"]["prob"] = {
-                        "over":  round(p_over, 4),
-                        "under": round(p_under, 4),
-                    }
-                    row["fair"]["american"] = {
-                        "over":  fair_odds_from_prob(p_over),
-                        "under": fair_odds_from_prob(p_under),
-                    }
-                    row["fair"]["book"] = over["book"] if over["book"] == "FanDuel" else under["book"]
+            # Populate shop data and attach fair odds
+            if over or under:
+                row["shop"] = {}
+                if over:
+                    row["shop"]["over"]  = {"american": int(over["price"]),  "book": over["book"]}
+                if under:
+                    row["shop"]["under"] = {"american": int(under["price"]), "book": under["book"]}
 
-            # Append exactly as you do today
+            _attach_fair_or_implied(row)
+
+            # Append to the list
             props_for_matchup.append(row)
 
         # Add props to the flat list for backward compatibility
