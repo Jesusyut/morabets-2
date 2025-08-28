@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.the-odds-api.com/v4"
 ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
+# Debug toggle for fair odds calculation
+DEBUG_PROB = os.getenv("DEBUG_PROB", "0") == "1"
+def _dbg(*args):
+    if DEBUG_PROB:
+        print("[FAIR]", *args)
+
 # Preferred sportsbooks for filtering
 PREFERRED_SPORTSBOOKS = ["draftkings", "fanduel", "betmgm"]
 VALID_BOOKS = {"DraftKings", "FanDuel", "BetMGM"}
@@ -85,19 +91,19 @@ def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tupl
 
 def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
     """
-    Fill row["fair"]["prob"] with:
-      - no-vig if both shop sides present
-      - implied fallback if only one side present (other = 1 - p)
-    Also attach fair american odds & record source book where possible.
+    1) If both sides exist -> true (no-vig) probs
+    2) else if one side exists -> implied from that side (other = 1-p)
+    3) else if generic 'odds' exists -> implied from it (other = 1-p)
     """
     shop = row.get("shop") or {}
-    over_am = (shop.get("over")  or {}).get("american")
+    over_am  = (shop.get("over")  or {}).get("american")
     under_am = (shop.get("under") or {}).get("american")
+    fallback = row.get("odds")  # single price we saved above
 
     row.setdefault("fair", {})
     row["fair"].setdefault("prob", {"over": 0.0, "under": 0.0})
 
-    # No-vig (both sides)
+    # 1) No-vig if both present
     if over_am is not None and under_am is not None:
         p_over, p_under = fair_probs_from_two_sided(over_am, under_am)
         if p_over is not None and p_under is not None:
@@ -107,14 +113,10 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
                 "over":  fair_odds_from_prob(p_over),
                 "under": fair_odds_from_prob(p_under),
             }
-            row["fair"]["book"] = (shop.get("over") or {}).get("book") or (shop.get("under") or {}).get("book") or ""
+            row["fair"]["book"] = (shop.get("over") or {}).get("book") or (shop.get("under") or {}).get("book") or (row.get("bookmaker") or "")
             return
 
-    # Implied fallback from single side or generic 'odds'
-    odds = row.get("odds")
-    if odds is not None and over_am is None and under_am is None:
-        over_am = odds  # treat generic as Over
-
+    # 2) Implied from the single side we have
     if over_am is not None and under_am is None:
         p = american_to_implied(over_am)
         row["fair"]["prob"]["over"]  = round(p, 4)
@@ -127,6 +129,14 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
         row["fair"]["prob"]["under"] = round(p, 4)
         row["fair"]["prob"]["over"]  = round(1.0 - p, 4)
         row["fair"]["book"] = (shop.get("under") or {}).get("book") or (row.get("bookmaker") or "")
+        return
+
+    # 3) Final fallback: generic 'odds' (exactly how the rebuild behaved post-enrichment)
+    if fallback is not None:
+        p = american_to_implied(fallback)
+        row["fair"]["prob"]["over"]  = round(p, 4)
+        row["fair"]["prob"]["under"] = round(1.0 - p, 4)
+        row["fair"]["book"] = row.get("bookmaker") or ""
         return
 
 def _event_odds(event_id: str, markets: List[str]) -> Dict[str, Any]:
@@ -572,25 +582,29 @@ def fetch_player_props():
         props_for_matchup = []
 
         for (player, stat_key, point), sides in sidebook.items():
-            over = sides.get("over")
+            # sides = {"over": {...} or None, "under": {...} or None}
+            over  = sides.get("over")
             under = sides.get("under")
 
             row = {
                 "player": player,
                 "stat":   stat_key,
                 "line":   point,
-                "odds":   (over or under or {}).get("price"),
-                "bookmaker": (over or under or {}).get("book"),
             }
 
-            # Populate shop data and attach fair odds
+            # Populate shop (used for no-vig) when we have either side
             if over or under:
                 row["shop"] = {}
                 if over:
-                    row["shop"]["over"]  = {"american": int(over["price"]),  "book": over["book"]}
+                    row["shop"]["over"] = {"american": int(over["price"]), "book": over["book"]}
                 if under:
                     row["shop"]["under"] = {"american": int(under["price"]), "book": under["book"]}
 
+            # Always provide a generic fallback price & book for implied calc
+            row["bookmaker"] = (over or under or {}).get("book")
+            row["odds"]      = (over or under or {}).get("price")
+
+            # Now compute fair or implied
             _attach_fair_or_implied(row)
 
             # Append to the list
