@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
+from copy import deepcopy
 from typing import Dict, Any, List, Tuple, Optional
 from contextual import get_contextual_hit_rate
 from fantasy import get_fantasy_hit_rate
@@ -18,28 +19,23 @@ from probability import (
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://api.the-odds-api.com/v4"
-ODDS_API_KEY = os.getenv("ODDS_API_KEY")
+BASE = "https://api.the-odds-api.com"
+API_KEY = os.getenv("ODDS_API_KEY", "").strip()
 
-# Debug toggle for fair odds calculation
-DEBUG_PROB = os.getenv("DEBUG_PROB", "0") == "1"
-def _dbg(*args):
-    if DEBUG_PROB:
-        print("[FAIR]", *args)
-
-# Preferred sportsbooks for filtering
-PREFERRED_SPORTSBOOKS = ["draftkings", "fanduel", "betmgm"]
-VALID_BOOKS = {"DraftKings", "FanDuel", "BetMGM"}
-
-# Use bookmaker *keys* (lowercase). You can override with ODDS_BOOKMAKERS env var.
+# bookmaker *keys* (lowercase). Override via ODDS_BOOKMAKERS env if needed.
 PREFERRED_BOOKMAKER_KEYS: List[str] = [
     b.strip() for b in (os.getenv("ODDS_BOOKMAKERS") or
                         "fanduel,draftkings,betmgm,caesars,pointsbetus").split(",")
     if b.strip()
 ]
 
+DEBUG_PROB = os.getenv("DEBUG_PROB", "0") == "1"
+def _dbg(*args):
+    if DEBUG_PROB:
+        print("[FAIR]", *args)
+
 def _norm_point(val) -> Optional[str]:
-    """Normalize prop line so '0.5' pairs with '0.50' etc. (3 dp)."""
+    """Normalize prop line so '0.5' pairs with '0.50' (3 dp string)."""
     if val is None:
         return None
     try:
@@ -50,13 +46,12 @@ def _norm_point(val) -> Optional[str]:
 
 def _resolve_side_and_player(name: Optional[str], desc: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
     """
-    Books flip which field holds 'Over/Under' vs player name.
-    Return (side, player_name) with side in {'over','under'}.
+    Books flip fields; return ('over'|'under', player_name).
     """
     n = (name or "").strip(); d = (desc or "").strip()
     ln, ld = n.lower(), d.lower()
-    if ln in ("over", "under"): return ln, d or n
-    if ld in ("over", "under"): return ld, n or d
+    if ln in ("over","under"): return ln, d or n
+    if ld in ("over","under"): return ld, n or d
     if "over" in ln:  return "over",  d or n
     if "under" in ln: return "under", d or n
     if "over" in ld:  return "over",  n or d
@@ -65,9 +60,8 @@ def _resolve_side_and_player(name: Optional[str], desc: Optional[str]) -> Tuple[
 
 def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tuple[str, str, Optional[str]], Dict[str, Optional[Dict[str, Any]]]]:
     """
-    Build a map for this market:
-      (player, stat, point_key) -> { "over": {price, book}, "under": {price, book} }
-    Prefer FanDuel on clashes; otherwise keep first seen.
+    (player, stat, point_key) -> { 'over': {price, book} | None, 'under': {...} | None }
+    Prefer FanDuel if duplicates.
     """
     sidebook = defaultdict(lambda: {"over": None, "under": None})
     for bk in bookmakers or []:
@@ -77,7 +71,7 @@ def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tupl
                 continue
             for o in m.get("outcomes") or []:
                 side, player = _resolve_side_and_player(o.get("name"), o.get("description"))
-                if side not in ("over", "under") or not player:
+                if side not in ("over","under") or not player:
                     continue
                 price = o.get("price")
                 if price is None:
@@ -91,19 +85,19 @@ def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tupl
 
 def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
     """
-    1) If both sides exist -> true (no-vig) probs
-    2) else if one side exists -> implied from that side (other = 1-p)
-    3) else if generic 'odds' exists -> implied from it (other = 1-p)
+    1) both sides -> no-vig probs
+    2) one side   -> implied from that side (other = 1-p)
+    3) fallback   -> implied from generic 'odds'
     """
     shop = row.get("shop") or {}
     over_am  = (shop.get("over")  or {}).get("american")
     under_am = (shop.get("under") or {}).get("american")
-    fallback = row.get("odds")  # single price we saved above
+    fallback = row.get("odds")
 
     row.setdefault("fair", {})
     row["fair"].setdefault("prob", {"over": 0.0, "under": 0.0})
+    _dbg("row", row.get("player"), row.get("stat"), row.get("line"), "over=", over_am, "under=", under_am, "fb=", fallback)
 
-    # 1) No-vig if both present
     if over_am is not None and under_am is not None:
         p_over, p_under = fair_probs_from_two_sided(over_am, under_am)
         if p_over is not None and p_under is not None:
@@ -116,7 +110,6 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
             row["fair"]["book"] = (shop.get("over") or {}).get("book") or (shop.get("under") or {}).get("book") or (row.get("bookmaker") or "")
             return
 
-    # 2) Implied from the single side we have
     if over_am is not None and under_am is None:
         p = american_to_implied(over_am)
         row["fair"]["prob"]["over"]  = round(p, 4)
@@ -131,7 +124,6 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
         row["fair"]["book"] = (shop.get("under") or {}).get("book") or (row.get("bookmaker") or "")
         return
 
-    # 3) Final fallback: generic 'odds' (exactly how the rebuild behaved post-enrichment)
     if fallback is not None:
         p = american_to_implied(fallback)
         row["fair"]["prob"]["over"]  = round(p, 4)
@@ -141,26 +133,20 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
 
 def _event_odds(event_id: str, markets: List[str]) -> Dict[str, Any]:
     """
-    Fetch event odds (player props). Try with bookmaker KEYS first, then fallback
-    without the 'bookmakers' filter if nothing returns.
+    Try with bookmaker KEYS first, then fallback without the filter.
     """
     base_params = {
-        "apiKey": ODDS_API_KEY,
-        "regions": "us",
-        "oddsFormat": "american",
+        "apiKey": API_KEY, "regions": "us", "oddsFormat": "american",
         "markets": ",".join(markets),
     }
     params = dict(base_params)
     if PREFERRED_BOOKMAKER_KEYS:
         params["bookmakers"] = ",".join(PREFERRED_BOOKMAKER_KEYS)
-
-    r = requests.get(f"{BASE_URL}/sports/baseball_mlb/events/{event_id}/odds", params=params, timeout=20)
+    r = requests.get(f"{BASE}/v4/sports/baseball_mlb/events/{event_id}/odds", params=params, timeout=20)
     r.raise_for_status()
     data = r.json() or {}
-
-    # Fallback: retry without 'bookmakers' if nothing came back
     if not (data.get("bookmakers") or []):
-        r2 = requests.get(f"{BASE_URL}/sports/baseball_mlb/events/{event_id}/odds", params=base_params, timeout=20)
+        r2 = requests.get(f"{BASE}/v4/sports/baseball_mlb/events/{event_id}/odds", params=base_params, timeout=20)
         r2.raise_for_status()
         data = r2.json() or {}
     return data
@@ -604,7 +590,7 @@ def fetch_player_props():
             row["bookmaker"] = (over or under or {}).get("book")
             row["odds"]      = (over or under or {}).get("price")
 
-            # Now compute fair or implied
+            # compute probabilities FIRST (so we have something to protect)
             _attach_fair_or_implied(row)
 
             # Append to the list
@@ -766,47 +752,55 @@ def enrich_prop(prop):
                 "note": "Using fallback fantasy rate"
             }
         
-        # Add fair probability calculations
-        try:
-            from probability import fair_probs_from_two_sided, fair_odds_from_prob
-            
-            def _attach_fair(prop, over_price=None, under_price=None, home_price=None, away_price=None, fav_price=None, dog_price=None):
-                def set_fair(pA, pB, sideA, sideB):
-                    if pA is None: return
-                    prop.setdefault("fair", {})
-                    prop["fair"]["prob"] = { sideA: round(pA,4), sideB: round(pB,4) }
-                    prop["fair"]["american"] = {
-                        sideA: fair_odds_from_prob(pA),
-                        sideB: fair_odds_from_prob(pB),
-                    }
+        # Preserve existing fair odds if already computed (don't clobber)
+        existing_fair = prop.get("fair")
+        if existing_fair and existing_fair.get("prob"):
+            prob = existing_fair["prob"]
+            if prob.get("over", 0.0) != 0.0 or prob.get("under", 0.0) != 0.0:
+                # Fair odds already computed, preserve them
+                pass
+            else:
+                # Fair odds were computed but are 0/0, try to recompute
+                try:
+                    from probability import fair_probs_from_two_sided, fair_odds_from_prob
+                    
+                    def _attach_fair(prop, over_price=None, under_price=None, home_price=None, away_price=None, fav_price=None, dog_price=None):
+                        def set_fair(pA, pB, sideA, sideB):
+                            if pA is None: return
+                            prop.setdefault("fair", {})
+                            prop["fair"]["prob"] = { sideA: round(pA,4), sideB: round(pB,4) }
+                            prop["fair"]["american"] = {
+                                sideA: fair_odds_from_prob(pA),
+                                sideB: fair_odds_from_prob(pB),
+                            }
 
-                # Totals (Over/Under)
-                if over_price is not None and under_price is not None:
-                    p_over, p_under = fair_probs_from_two_sided(float(over_price), float(under_price))
-                    set_fair(p_over, p_under, "over", "under")
-                    return
+                        # Totals (Over/Under)
+                        if over_price is not None and under_price is not None:
+                            p_over, p_under = fair_probs_from_two_sided(float(over_price), float(under_price))
+                            set_fair(p_over, p_under, "over", "under")
+                            return
 
-                # Moneyline (Home/Away)
-                if home_price is not None and away_price is not None:
-                    p_home, p_away = fair_probs_from_two_sided(float(home_price), float(away_price))
-                    set_fair(p_home, p_away, "home", "away")
-                    return
+                        # Moneyline (Home/Away)
+                        if home_price is not None and away_price is not None:
+                            p_home, p_away = fair_probs_from_two_sided(float(home_price), float(away_price))
+                            set_fair(p_home, p_away, "home", "away")
+                            return
 
-                # Spread (Fav/Dog)
-                if fav_price is not None and dog_price is not None:
-                    p_fav, p_dog = fair_probs_from_two_sided(float(fav_price), float(dog_price))
-                    set_fair(p_fav, p_dog, "favorite", "underdog")
-                    return
+                        # Spread (Fav/Dog)
+                        if fav_price is not None and dog_price is not None:
+                            p_fav, p_dog = fair_probs_from_two_sided(float(fav_price), float(dog_price))
+                            set_fair(p_fav, p_dog, "favorite", "underdog")
+                            return
 
-            # Extract existing odds from current structure and attach fair probabilities
-            shop = prop.get("shop") or {}
-            over_am = shop.get("over", {}).get("american")
-            under_am = shop.get("under", {}).get("american")
-            _attach_fair(prop, over_price=over_am, under_price=under_am)
-            
-        except Exception as fair_error:
-            print(f"[DEBUG] Fair probability calculation failed for {prop.get('player', 'Unknown')}: {fair_error}")
-            # Continue without fair probabilities if calculation fails
+                    # Extract existing odds from current structure and attach fair probabilities
+                    shop = prop.get("shop") or {}
+                    over_am = shop.get("over", {}).get("american")
+                    under_am = shop.get("under", {}).get("american")
+                    _attach_fair(prop, over_price=over_am, under_price=under_am)
+                    
+                except Exception as fair_error:
+                    print(f"[DEBUG] Fair probability calculation failed for {prop.get('player', 'Unknown')}: {fair_error}")
+                    # Continue without fair probabilities if calculation fails
         
         # Return enriched prop
         return {

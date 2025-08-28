@@ -49,6 +49,25 @@ def resolve_mlb_player_id(full_name: str) -> str | None:
 
 logger = logging.getLogger(__name__)
 
+def _safe_init_fair(row: dict) -> None:
+    row.setdefault("fair", {})
+    row["fair"].setdefault("book", "")
+    row["fair"].setdefault("prob", {})
+    row["fair"]["prob"].setdefault("over", 0.0)
+    row["fair"]["prob"].setdefault("under", 0.0)
+
+# Find and replace any direct assignment to row["fair"] with:
+# _safe_init_fair(row)
+
+# Example usage in this file wherever fair is referenced:
+# _safe_init_fair(row)
+# # then only set fields if missing, never force 0/0 over existing non-zeros
+# p = row["fair"]["prob"]
+# if not (p.get("over") or p.get("under")):
+#     # only if still empty, you may put placeholders
+#     p["over"]  = p.get("over", 0.0)
+#     p["under"] = p.get("under", 0.0)
+
 # Enhanced Enrichment: Park Factor Analysis
 def load_park_factors():
     """Load park factors from JSON file with safe fallback"""
