@@ -1,0 +1,500 @@
+                        'batter_stolen_bases': 'Stolen Bases',
+                        'batter_walks': 'Walks',
+                        'batter_strikeouts': 'Strikeouts',
+                        'batter_hits_runs_rbis': 'H+R+RBI',
+                        'pitcher_strikeouts': 'Pitcher Strikeouts',
+                        'pitcher_hits_allowed': 'Pitcher Hits Allowed',
+                        'pitcher_earned_runs': 'Pitcher Earned Runs',
+                        'pitcher_walks': 'Pitcher Walks',
+                        'pitcher_outs': 'Pitcher Outs',
+                        'batter_fantasy_score': 'Fantasy Score',
+                        'pitcher_fantasy_score': 'Pitcher Fantasy Score'
+                    };
+                    
+                    const statDisplay = statDisplayNames[prop.stat] || prop.stat
+                        .replace('batter_', '')
+                        .replace('pitcher_', '')
+                        .replace('_', ' ')
+                        .replace(/\b\w/g, l => l.toUpperCase());
+
+                    // Parse player name from prop.player
+                    const playerName = prop.player || 'Unknown Player';
+                    
+                    // Get team vs opponent info (simplified)
+                    const teamVs = contextualHitRate.opponent_id ? `vs Team ${contextualHitRate.opponent_id}` : 'vs TBD';
+                    
+                    // Calculate confidence level for badge
+                    let confidenceClass = 'bg-secondary';
+                    let confidenceText = 'Unknown';
+                    
+                    if (contextualHitRate.hit_rate !== undefined && !contextualHitRate.error) {
+                        const hitRateValue = contextualHitRate.hit_rate * 100;
+                        if (hitRateValue >= 60) {
+                            confidenceClass = 'bg-success';
+                            confidenceText = 'High';
+                        } else if (hitRateValue >= 50) {
+                            confidenceClass = 'bg-warning';
+                            confidenceText = 'Medium';
+                        } else {
+                            confidenceClass = 'bg-danger';
+                            confidenceText = 'Low';
+                        }
+                    }
+
+                    // Format line display (prop.line is a number like 1.5)
+                    const overUnder = 'Over';
+                    const lineValue = prop.line || '0';
+                    const lineDisplay = `${overUnder} ${lineValue}`;
+
+                    return `
+                    <div class="prop-card card mb-2 border-0 shadow-sm" data-player="${playerName.toLowerCase()}" data-stat="${prop.stat}" data-confidence="${confidenceText.toLowerCase()}">
+                        <div class="card-body p-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2 text-center">
+                                    <div class="player-avatar bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 45px; height: 45px; margin: 0 auto;">
+                                        <i class="fas fa-user" style="font-size: 0.9em;"></i>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6 class="mb-1 fw-bold">${playerName}</h6>
+                                    <p class="text-muted mb-1 small">${teamVs}</p>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-light text-dark small">${statDisplay}</span>
+                                        <span class="badge bg-success text-white small">
+                                            ${lineDisplay}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="mb-1">
+                                        <span class="fw-bold">${prop.odds > 0 ? '+' : ''}${prop.odds}</span>
+                                    </div>
+                                    <div class="small text-muted">Odds</div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="mb-1">
+                                        <span class="fw-bold ${hitRateClass}">${hitRateDisplay}%</span>
+                                    </div>
+                                    <div class="small text-muted">Hit Rate</div>
+                                    <div class="small text-muted">(${sampleSize})</div>
+                                </div>
+                                <div class="col-md-2 text-end">
+                                    <div class="mb-2">
+                                        <div class="badge ${confidenceClass} text-white small">${confidenceText}</div>
+                                    </div>
+                                    <div class="small text-muted">${prop.bookmaker}</div>
+                                    ${fantasyDisplay !== 'N/A' ? 
+                                        `<div class="small ${fantasyClass}">Fantasy: ${fantasyDisplay}%</div>` : ''
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+
+                // Add "Load More" button if there are more props to show
+                if (filteredProps.length > currentDisplayLimit) {
+                    container.innerHTML += `
+                        <div class="text-center mt-3">
+                            <button class="btn btn-primary" onclick="loadMoreProps()">
+                                Load More Props (${filteredProps.length - currentDisplayLimit} remaining)
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                // Add last updated timestamp
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('props-last-updated').innerHTML = `<i class="fas fa-clock"></i> Last Updated: ${lastUpdated}`;
+            } catch (renderError) {
+                console.error('Error rendering props:', renderError);
+                container.innerHTML = `<div class="alert alert-danger">Error rendering props: ${renderError.message}</div>`;
+            }
+        }
+
+        // Global variables for Today's Picks
+        let todaysPicksLoaded = false;
+        let smartComboResult = null;
+        
+        // Load Smart Combo matchup tabs
+        function loadSmartComboMatchups() {
+            const container = document.getElementById('smart-combo-matchup-tabs');
+            
+            // Use the same matchup data from Player Props
+            if (!allMatchups || Object.keys(allMatchups).length === 0) {
+                container.innerHTML = '<div class="alert alert-info">No matchups available for AI analysis.</div>';
+                return;
+            }
+            
+            const matchupKeys = Object.keys(allMatchups).sort();
+            
+            container.innerHTML = matchupKeys.map((matchup, index) => {
+                const propsCount = allMatchups[matchup].length;
+                const isActive = index === 0; // Make first matchup active by default
+                
+                return `
+                    <button 
+                        class="btn btn-outline-primary matchup-tab ${isActive ? 'active' : ''}" 
+                        data-smart-combo-matchup="${matchup}"
+                        onclick="selectSmartComboMatchup('${matchup}')"
+                    >
+                        <div class="text-center">
+                            <div class="fw-bold">${matchup}</div>
+                            <small class="text-muted">${propsCount} props</small>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+            
+            // Auto-select first matchup
+            if (matchupKeys.length > 0) {
+                selectSmartComboMatchup(matchupKeys[0]);
+            }
+        }
+        
+        // Select matchup and load Smart Combo analysis
+        async function selectSmartComboMatchup(matchupName) {
+            activeSmartComboMatchup = matchupName;
+            
+            // Update active tab styling
+            document.querySelectorAll('[data-smart-combo-matchup]').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.smartComboMatchup === matchupName) {
+                    tab.classList.add('active');
+                }
+            });
+            
+            // Update metadata
+            document.getElementById('active-smart-combo-matchup').textContent = matchupName;
+            
+            // Load Smart Combo for this matchup
+            await loadSmartComboForMatchup(matchupName);
+        }
+        
+        // Load Smart Combo analysis for specific matchup
+        async function loadSmartComboForMatchup(matchupName) {
+            try {
+                const container = document.getElementById('smart-combo-result-container');
+                container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading AI analysis...</div>';
+                
+                const response = await fetch(`/smart_combo?matchup=${encodeURIComponent(matchupName)}`);
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    container.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Failed to generate analysis'}</div>`;
+                    return;
+                }
+                
+                if (data.status === 'no_data') {
+                    container.innerHTML = '<div class="alert alert-info">No props available for this matchup. Please try another game.</div>';
+                    return;
+                }
+                
+                // Store result and update timestamp
+                smartComboResult = data;
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('smart-combo-last-updated').textContent = lastUpdated;
+                
+                // Display result based on type
+                if (data.combo && Array.isArray(data.combo)) {
+                    // Display 2-leg combo
+                    displaySmartCombo(data);
+                } else if (data.best_single) {
+                    // Display single prop fallback
+                    displaySingleProp(data);
+                } else {
+                    container.innerHTML = '<div class="alert alert-warning">Unexpected response format from AI analysis.</div>';
+                }
+                
+            } catch (error) {
+                console.error('Error loading Smart Combo:', error);
+                document.getElementById('smart-combo-result-container').innerHTML = 
+                    `<div class="alert alert-danger">Error loading AI analysis: ${error.message}</div>`;
+            }
+        }
+        
+        // Display 2-leg combo result
+        function displaySmartCombo(data) {
+            const container = document.getElementById('smart-combo-result-container');
+            
+            container.innerHTML = `
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-brain me-2"></i>AI 2-Leg Combo for ${data.matchup}
+                            <span class="badge bg-light text-success ms-2">${data.confidence}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="text-primary">Leg 1</h6>
+                                        <p class="mb-1 fw-bold">${data.combo[0]}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="text-primary">Leg 2</h6>
+                                        <p class="mb-1 fw-bold">${data.combo[1]}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${data.reason ? `
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-lightbulb me-2"></i>AI Reasoning</h6>
+                                <p class="mb-0">${data.reason}</p>
+                            </div>
+                        ` : ''}
+                        
+                        ${data.payout ? `
+                            <div class="text-center">
+                                <span class="badge bg-warning text-dark fs-6">Expected Payout: ${data.payout}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Display single prop fallback
+        function displaySingleProp(data) {
+            const container = document.getElementById('smart-combo-result-container');
+            
+            container.innerHTML = `
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-star me-2"></i>Top Single Prop for ${data.matchup}
+                            <span class="badge bg-light text-primary ms-2">${data.confidence}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <h4 class="text-primary">${data.best_single}</h4>
+                        </div>
+                        
+                        ${data.reason ? `
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-lightbulb me-2"></i>AI Analysis</h6>
+                                <p class="mb-0">${data.reason}</p>
+                            </div>
+                        ` : ''}
+                        
+                        ${data.suggestion ? `
+                            <div class="alert alert-secondary">
+                                <h6><i class="fas fa-info-circle me-2"></i>Suggestion</h6>
+                                <p class="mb-0">${data.suggestion}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Load Today's Picks (lean GPT-powered parlays)
+        async function loadTodaysPicks() {
+            if (todaysPicksLoaded) return; // Only load once per session
+            
+            const container = document.getElementById('combos-pane');
+            if (!container) return;
+            
+            // Update UI to show Today's Picks interface
+            container.innerHTML = `
+                <div class="row">
+                    <div class="col-12">
+                        <div class="stats-card">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3><i class="fas fa-star"></i> Today's Picks</h3>
+                                <div class="d-flex gap-2">
+                                    <span class="badge bg-success">GPT-4 Powered</span>
+                                    <button class="btn btn-success btn-sm" id="refresh-todays-picks">
+                                        <i class="fas fa-sync-alt"></i> Refresh Picks
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-success mb-3">
+                                <h6><i class="fas fa-magic"></i> Lean Daily Recommendations</h6>
+                                <p class="mb-0">AI analyzes today's MLB props to generate 2 carefully selected parlays: one high-probability double and one risk-reward play with clear reasoning.</p>
+                            </div>
+                            
+                            <div id="todays-picks-container">
+                                <div class="loading">
+                                    <i class="fas fa-spinner fa-spin"></i> Generating today's picks...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add refresh button listener
+            document.getElementById('refresh-todays-picks').addEventListener('click', refreshTodaysPicks);
+            
+            // Load initial picks
+            await refreshTodaysPicks();
+            todaysPicksLoaded = true;
+        }
+        
+        // Refresh Today's Picks
+        async function refreshTodaysPicks() {
+            const container = document.getElementById('todays-picks-container');
+            if (!container) return;
+            
+            const button = document.getElementById('refresh-todays-picks');
+            const originalText = button ? button.innerHTML : '';
+            
+            if (button) {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+                button.disabled = true;
+            }
+            
+            try {
+                const response = await fetch('/todays_picks');
+                const data = await response.json();
+                
+                if (data.picks_analysis) {
+                    container.innerHTML = `
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-star me-2"></i>Today's Recommended Parlays
+                                    <span class="badge bg-light text-success ms-2">GPT-4 Analysis</span>
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info mb-3">
+                                    <small><i class="fas fa-info-circle me-1"></i>Analyzed ${data.props_analyzed} MLB props</small>
+                                </div>
+                                <div style="white-space: pre-line; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;">${data.picks_analysis}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.error) {
+                    container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+                } else {
+                    container.innerHTML = `<div class="alert alert-info">No picks available at this time.</div>`;
+                }
+                
+            } catch (error) {
+                console.error('Error loading Today\'s Picks:', error);
+                container.innerHTML = `<div class="alert alert-danger">Error loading picks: ${error.message}</div>`;
+            } finally {
+                if (button) {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }
+            }
+        }
+        
+        // Legacy Smart Combo function (deprecated)
+        async function refreshSmartCombo() {
+            if (!activeSmartComboMatchup) {
+                document.getElementById('smart-combo-result-container').innerHTML = 
+                    '<div class="alert alert-warning">Please select a matchup first.</div>';
+                return;
+            }
+            
+            const button = document.getElementById('refresh-smart-combo');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            button.disabled = true;
+            
+            try {
+                // Call AI suggestion result with matchup filtering
+                const url = activeSmartComboMatchup ? 
+                    `/ai_suggestion_result?matchup=${encodeURIComponent(activeSmartComboMatchup)}` : 
+                    `/ai_suggestion_result`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                // Update display with AI analysis result
+                if (data.combo_recommendations) {
+                    const container = document.getElementById('smart-combo-result-container');
+                    container.innerHTML = `
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-star me-2"></i>Today's Picks
+                                    <span class="badge bg-light text-primary ms-2">GPT-4 Powered</span>
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info mb-3">
+                                    <small><i class="fas fa-info-circle me-1"></i>Analyzed ${data.props_analyzed} player props</small>
+                                </div>
+                                <div style="white-space: pre-line;">${data.combo_recommendations}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.error) {
+                    document.getElementById('smart-combo-result-container').innerHTML = 
+                        `<div class="alert alert-warning">${data.error}</div>`;
+                }
+                
+                // Update timestamp
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('smart-combo-last-updated').textContent = lastUpdated;
+                
+            } catch (error) {
+                console.error('Error refreshing Smart Combo:', error);
+                document.getElementById('smart-combo-result-container').innerHTML = 
+                    `<div class="alert alert-danger">Error refreshing analysis: ${error.message}</div>`;
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            updatePlatformStatus();
+            loadMoneylines();
+            loadPlayerProps();
+            loadMatchups();
+            
+            // Add search and filter event listeners
+            if (document.getElementById('stat-filter')) {
+                document.getElementById('stat-filter').addEventListener('change', applyFilters);
+            }
+            if (document.getElementById('player-search')) {
+                document.getElementById('player-search').addEventListener('input', applyFilters);
+            }
+            if (document.getElementById('confidence-filter')) {
+                document.getElementById('confidence-filter').addEventListener('change', applyFilters);
+            }
+            if (document.getElementById('reset-filters')) {
+                document.getElementById('reset-filters').addEventListener('click', resetFilters);
+            }
+            
+            // Add tab change listener to load Today's Picks when tab is clicked
+            document.getElementById('combos-tab').addEventListener('click', function() {
+                // Load Today's Picks when tab is first clicked
+                setTimeout(() => {
+                    loadTodaysPicks();
+                }, 100);
+            });
+            
+            // Add refresh button listener for Today's Picks
+            if (document.getElementById('refresh-todays-picks')) {
+                document.getElementById('refresh-todays-picks').addEventListener('click', refreshTodaysPicks);
+            }
+            
+            // Refresh data every 5 minutes
+            setInterval(() => {
+                updatePlatformStatus();
+                loadMoneylines();
+                loadPlayerProps();
+                loadMatchups();
+            }, 300000);
+        });
+    </script>
+</body>
+</html>
