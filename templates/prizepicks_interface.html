@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mora Bets - PrizePicks Style Player Props</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+        }
+        
+        .prop-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .prop-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .prop-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--bs-primary), var(--bs-info));
+        }
+        
+        .player-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            object-fit: cover;
+        }
+        
+        .confidence-high {
+            color: #22c55e;
+            font-weight: bold;
+        }
+        
+        .confidence-medium {
+            color: #f59e0b;
+            font-weight: bold;
+        }
+        
+        .confidence-low {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        
+        .prop-stat {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--bs-primary);
+        }
+        
+        .prop-line {
+            font-size: 1.1rem;
+            color: var(--bs-light);
+        }
+        
+        .prop-odds {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--bs-success);
+        }
+        
+        .hit-rate-badge {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        .filter-section {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .search-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: var(--bs-light);
+            padding: 0.75rem 1rem;
+        }
+        
+        .search-input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--bs-primary);
+            box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.25);
+        }
+        
+        .stat-count {
+            background: var(--bs-primary);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .team-info {
+            font-size: 0.9rem;
+            color: var(--bs-secondary);
+            margin-top: 0.5rem;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+        
+        .no-props {
+            text-align: center;
+            padding: 3rem;
+            color: var(--bs-secondary);
+        }
+        
+        .header-stats {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--bs-primary);
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--bs-secondary);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark shadow-lg">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>
+                Mora Bets - Player Props
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    <span id="last-updated">Loading...</span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Header Stats -->
+        <div class="header-stats">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-props">0</div>
+                        <div class="stat-label">Total Props</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value" id="high-confidence">0</div>
+                        <div class="stat-label">High Confidence</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value" id="medium-confidence">0</div>
+                        <div class="stat-label">Medium Confidence</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-item">
+                        <div class="stat-value" id="low-confidence">0</div>
+                        <div class="stat-label">Low Confidence</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="player-search" class="form-label">
+                        <i class="fas fa-search me-1"></i>
+                        Search Player
+                    </label>
+                    <input type="text" class="form-control search-input" id="player-search" placeholder="Enter player name...">
+                </div>
+                <div class="col-md-3">
+                    <label for="stat-filter" class="form-label">
+                        <i class="fas fa-filter me-1"></i>
+                        Stat Type
+                    </label>
+                    <select class="form-select search-input" id="stat-filter">
+                        <option value="">All Stats</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="confidence-filter" class="form-label">
+                        <i class="fas fa-star me-1"></i>
+                        Confidence
+                    </label>
+                    <select class="form-select search-input" id="confidence-filter">
+                        <option value="">All Confidence</option>
+                        <option value="high">High (60%+)</option>
+                        <option value="medium">Medium (50-60%)</option>
+                        <option value="low">Low (<50%)</option>
+                        <option value="na">N/A (Missing Data)</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label for="book-filter" class="form-label">
+                        <i class="fas fa-book me-1"></i>
+                        Book
+                    </label>
+                    <select class="form-select search-input" id="book-filter">
+                        <option value="">All Books</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div class="loading-spinner" id="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="mt-3">Loading player props...</div>
+        </div>
+
+        <!-- Props Container -->
+        <div class="row" id="props-container">
+            <!-- Props will be loaded here -->
+        </div>
+
+        <!-- No Props Message -->
+        <div class="no-props" id="no-props" style="display: none;">
+            <i class="fas fa-exclamation-triangle fa-3x mb-3 text-warning"></i>
+            <h4>No Props Found</h4>
+            <p>Try adjusting your filters or check back later for new props.</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let allProps = [];
+        let filteredProps = [];
+
+        // Load props on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadProps();
+            
+            // Set up event listeners for filters
+            document.getElementById('player-search').addEventListener('input', filterProps);
+            document.getElementById('stat-filter').addEventListener('change', filterProps);
+            document.getElementById('confidence-filter').addEventListener('change', filterProps);
+            document.getElementById('book-filter').addEventListener('change', filterProps);
+        });
+
+        async function loadProps() {
+            const loading = document.getElementById('loading');
+            const container = document.getElementById('props-container');
+            const noPropsMsg = document.getElementById('no-props');
+            
+            loading.style.display = 'block';
+            container.innerHTML = '';
+            noPropsMsg.style.display = 'none';
+
+            try {
+                const response = await fetch('/player_props')
+                    .catch(err => {
+                        console.error('Failed to fetch props:', err);
+                        throw err;
+                    });
+                const props = await response.json();
+                
+                console.log(`[DEBUG] Loaded ${props.length} props from API`);
+                
+                allProps = props;
+                filteredProps = props;
+                
+                populateFilters();
+                displayProps();
+                updateStats();
+                updateLastUpdated();
+                
+            } catch (error) {
+                console.error('Error loading props:', error);
+                container.innerHTML = '<div class="alert alert-danger">Error loading props. Please try again.</div>';
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function populateFilters() {
+            const statFilter = document.getElementById('stat-filter');
+            const bookFilter = document.getElementById('book-filter');
+            
+            // Get unique stat types
+            const statTypes = [...new Set(allProps.map(p => p.stat))];
+            statFilter.innerHTML = '<option value="">All Stats</option>';
+            statTypes.forEach(stat => {
+                const displayName = getStatDisplayName(stat);
+                const count = allProps.filter(p => p.stat === stat).length;
+                statFilter.innerHTML += `<option value="${stat}">${displayName} (${count})</option>`;
+            });
+            
+            // Get unique bookmakers
+            const bookmakers = [...new Set(allProps.map(p => p.bookmaker))];
+            bookFilter.innerHTML = '<option value="">All Books</option>';
+            bookmakers.forEach(book => {
+                const count = allProps.filter(p => p.bookmaker === book).length;
+                bookFilter.innerHTML += `<option value="${book}">${book} (${count})</option>`;
+            });
+        }
+
+        function filterProps() {
+            const playerSearch = document.getElementById('player-search').value.toLowerCase().trim();
+            const statFilter = document.getElementById('stat-filter').value;
+            const confidenceFilter = document.getElementById('confidence-filter').value;
+            const bookFilter = document.getElementById('book-filter').value;
+
+            filteredProps = allProps.filter(prop => {
+                // Case-insensitive player search
+                const matchesPlayer = !playerSearch || prop.player.toLowerCase().includes(playerSearch);
+                
+                // Case-insensitive stat filter
+                const matchesStat = !statFilter || prop.stat === statFilter;
+                
+                // Case-insensitive bookmaker filter
+                const matchesBook = !bookFilter || prop.bookmaker === bookFilter;
+                
+                // Enhanced confidence filtering with N/A handling
+                let matchesConfidence = true;
+                if (confidenceFilter) {
+                    const contextual = prop.contextual_hit_rate || {};
+                    const hitRate = contextual.hit_rate;
+                    
+                    // Handle N/A and missing hit rate data
+                    if (hitRate === null || hitRate === undefined) {
+                        // For N/A hit rates, only show if "N/A" filter is selected
+                        matchesConfidence = confidenceFilter === 'na';
+                    } else {
+                        const hitRatePercent = hitRate * 100;
+                        switch(confidenceFilter) {
+                            case 'high':
+                                matchesConfidence = hitRatePercent >= 60;
+                                break;
+                            case 'medium':
+                                matchesConfidence = hitRatePercent >= 50 && hitRatePercent < 60;
+                                break;
+                            case 'low':
+                                matchesConfidence = hitRatePercent < 50;
+                                break;
+                            case 'na':
+                                matchesConfidence = false; // N/A filter only shows props with null hit rates
+                                break;
+                        }
+                    }
+                }
+                
+                return matchesPlayer && matchesStat && matchesBook && matchesConfidence;
+            });
+            
+            displayProps();
+            updateStats();
+        }
+
+        function displayProps() {
+            const container = document.getElementById('props-container');
+            const noPropsMsg = document.getElementById('no-props');
+            
+            console.log(`[DEBUG] Displaying ${filteredProps.length} props across ${new Set(filteredProps.map(p => p.stat)).size} stat types`);
+            
+            if (filteredProps.length === 0) {
+                container.innerHTML = '';
+                noPropsMsg.style.display = 'block';
+                return;
+            }
+            
+            noPropsMsg.style.display = 'none';
+            
+            container.innerHTML = filteredProps.map(prop => {
+                const contextual = prop.contextual_hit_rate || {};
+                const hasValidHitRate = contextual.hit_rate !== undefined && !contextual.error;
+                const hitRate = hasValidHitRate ? contextual.hit_rate * 100 : 0;
+                
+                let confidenceClass = 'bg-secondary';
+                let confidenceText = 'Unknown';
+                let hitRateClass = 'text-muted';
+                
+                if (hasValidHitRate) {
+                    if (hitRate >= 60) {
+                        confidenceClass = 'bg-success';
+                        confidenceText = 'High';
+                        hitRateClass = 'confidence-high';
+                    } else if (hitRate >= 50) {
+                        confidenceClass = 'bg-warning';
+                        confidenceText = 'Medium';
+                        hitRateClass = 'confidence-medium';
+                    } else {
+                        confidenceClass = 'bg-danger';
+                        confidenceText = 'Low';
+                        hitRateClass = 'confidence-low';
+                    }
+                }
+                
+                const statDisplay = getStatDisplayName(prop.stat);
+                const avatarUrl = getPlayerAvatarUrl(prop.player);
+                
+                return `
+                    <div class="col-md-6 col-lg-4 mb-4">
+                        <div class="prop-card">
+                            <div class="hit-rate-badge ${confidenceClass}">
+                                ${confidenceText}
+                            </div>
+                            
+                            <div class="d-flex align-items-center mb-3">
+                                <img src="${avatarUrl}" alt="${prop.player}" class="player-avatar me-3" 
+                                     onerror="this.src='https://ui-avatars.com/api/?name=${prop.player.replace(/\s+/g, '+')}&background=0d1117&color=fff&size=60&bold=true'">
+                                <div>
+                                    <h5 class="mb-1">${prop.player}</h5>
+                                    <div class="team-info">${prop.bookmaker}</div>
+                                </div>
+                            </div>
+                            
+                            <div class="prop-stat mb-2">${statDisplay}</div>
+                            <div class="prop-line mb-2">Over ${prop.threshold || prop.line}</div>
+                            <div class="prop-odds mb-3">${prop.odds}</div>
+                            
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="text-muted small">Hit Rate</div>
+                                    <div class="${hitRateClass}">
+                                        ${hasValidHitRate ? hitRate.toFixed(1) + '%' : 'N/A'}
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="text-muted small">Implied Prob</div>
+                                    <div class="text-info">${prop.implied_probability}%</div>
+                                </div>
+                            </div>
+                            
+                            ${hasValidHitRate ? `
+                                <div class="mt-2">
+                                    <div class="text-muted small">Sample Size: ${contextual.sample_size || 'N/A'}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateStats() {
+            const totalProps = filteredProps.length;
+            let highConfidence = 0;
+            let mediumConfidence = 0;
+            let lowConfidence = 0;
+            
+            filteredProps.forEach(prop => {
+                const contextual = prop.contextual_hit_rate || {};
+                const hasValidHitRate = contextual.hit_rate !== undefined && !contextual.error;
+                
+                if (hasValidHitRate) {
+                    const hitRate = contextual.hit_rate * 100;
+                    if (hitRate >= 60) {
+                        highConfidence++;
+                    } else if (hitRate >= 50) {
+                        mediumConfidence++;
+                    } else {
+                        lowConfidence++;
+                    }
+                }
+            });
+            
+            document.getElementById('total-props').textContent = totalProps;
+            document.getElementById('high-confidence').textContent = highConfidence;
+            document.getElementById('medium-confidence').textContent = mediumConfidence;
+            document.getElementById('low-confidence').textContent = lowConfidence;
+        }
+
+        function updateLastUpdated() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            document.getElementById('last-updated').textContent = `Updated ${timeString}`;
+        }
+
+        function getStatDisplayName(stat) {
+            const statNames = {
+                'batter_total_bases': 'Total Bases',
+                'batter_hits': 'Hits',
+                'batter_rbi': 'RBI',
+                'batter_runs': 'Runs',
+                'batter_home_runs': 'Home Runs',
+                'batter_stolen_bases': 'Stolen Bases',
+                'batter_walks': 'Walks',
+                'batter_strikeouts': 'Strikeouts',
+                'batter_hits_runs_rbis': 'H+R+RBI',
+                'pitcher_strikeouts': 'Strikeouts',
+                'pitcher_hits_allowed': 'Hits Allowed',
+                'pitcher_earned_runs': 'Earned Runs',
+                'pitcher_walks': 'Walks',
+                'pitcher_outs': 'Outs Recorded',
+                'batter_fantasy_score': 'Fantasy Score',
+                'pitcher_fantasy_score': 'Fantasy Score'
+            };
+            return statNames[stat] || stat.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        function getPlayerAvatarUrl(playerName) {
+            const initials = playerName.split(' ').map(n => n[0]).join('').toUpperCase();
+            return `https://ui-avatars.com/api/?name=${initials}&background=0d1117&color=fff&size=60&bold=true`;
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadProps, 5 * 60 * 1000);
+    </script>
+</body>
+</html>

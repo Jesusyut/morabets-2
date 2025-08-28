@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How It Works - Mora Bets</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Learn how Mora Bets uses real-time data and probability analysis to give you an edge in sports betting. Discover our proven methodology for smarter MLB prop betting.">
+    <meta name="keywords" content="sports betting, MLB props, probability analysis, betting strategy, edge betting, smart betting">
+    <meta name="author" content="Mora Bets">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://morabets.replit.app/how-it-works">
+    <meta property="og:title" content="How Mora Bets Works - Smart Sports Betting">
+    <meta property="og:description" content="Learn how Mora Bets uses real-time data and probability analysis to give you an edge in sports betting.">
+    <meta property="og:site_name" content="Mora Bets">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://morabets.replit.app/how-it-works">
+    <meta property="twitter:title" content="How Mora Bets Works - Smart Sports Betting">
+    <meta property="twitter:description" content="Learn how Mora Bets uses real-time data and probability analysis to give you an edge in sports betting.">
+    
+    <!-- Meta Pixel Code -->
+    <script>
+    !function(f,b,e,v,n,t,s)
+    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+    n.queue=[];t=b.createElement(e);t.async=!0;
+    t.src=v;s=b.getElementsByTagName(e)[0];
+    s.parentNode.insertBefore(t,s)}(window, document,'script',
+    'https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '1261396838594019');
+    fbq('track', 'PageView');
+    </script>
+    <noscript><img height="1" width="1" style="display:none"
+    src="https://www.facebook.com/tr?id=1261396838594019&ev=PageView&noscript=1"
+    /></noscript>
+    <!-- End Meta Pixel Code -->
+    
+    <!-- JSON-LD Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "How It Works - Mora Bets",
+        "description": "Learn how Mora Bets uses real-time data and probability analysis to give you an edge in sports betting.",
+        "url": "https://morabets.replit.app/how-it-works",
+        "mainEntity": {
+            "@type": "HowTo",
+            "name": "How to Use Mora Bets for Smart Sports Betting",
+            "description": "Step-by-step guide to using Mora Bets for data-driven sports betting decisions",
+            "step": [
+                {
+                    "@type": "HowToStep",
+                    "name": "Access Real-Time Data",
+                    "text": "Get live MLB player prop odds and probability calculations from multiple sportsbooks"
+                },
+                {
+                    "@type": "HowToStep", 
+                    "name": "Analyze Edge Opportunities",
+                    "text": "Use our contextual analysis to identify props with positive expected value"
+                },
+                {
+                    "@type": "HowToStep",
+                    "name": "Make Informed Bets",
+                    "text": "Place bets based on mathematical probability rather than gut feelings"
+                }
+            ]
+        }
+    }
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-navy': '#0d3b66',
+                        'brand-green': '#14532d',
+                        'brand-cta': '#17603e',
+                        'brand-gold': '#facc15',
+                        'brand-bg': '#f9fafb',
+                        'brand-text': '#1a1a1a'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-brand-bg text-brand-text min-h-screen">
+    <!-- Navigation Bar -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="text-2xl font-bold text-brand-navy">MORA BETS</div>
+            <button id="userKeySignIn" class="bg-brand-cta hover:bg-brand-green text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+                🔓 Already Subscribed? Enter Key
+            </button>
+        </div>
+    </nav>
+
+    <!-- User Key Input Modal -->
+    <div id="keyModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 max-w-md mx-4">
+            <h3 class="text-lg font-bold mb-4 text-brand-navy">Enter Your License Key</h3>
+            <form id="keyForm">
+                <input type="text" id="userKeyInput" placeholder="Enter your license key" 
+                       class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-cta mb-4">
+                <div id="keyError" class="hidden text-red-500 text-sm mb-4"></div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancelKey" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
+                    <button type="submit" id="submitKeyBtn" class="px-4 py-2 bg-brand-cta text-white rounded-md hover:bg-brand-green">Sign In</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SECTION 1: HERO -->
+    <section class="py-20 bg-brand-bg">
+        <div class="container mx-auto px-6 text-center max-w-6xl">
+            <h1 class="text-4xl md:text-6xl font-bold mb-6 text-brand-navy leading-tight">
+                You're Losing Bets Because You're Guessing.
+            </h1>
+            <p class="text-xl md:text-2xl text-gray-600 mb-10 max-w-4xl mx-auto leading-relaxed">
+                Most bettors chase names and big parlays. The books know it. They price your picks to keep you losing — just often enough to come back.
+            </p>
+            <div class="mt-8">
+                <a href="/paywall" class="inline-block bg-brand-cta text-white px-8 py-4 rounded-md font-semibold hover:bg-brand-green transition-colors text-lg">
+                    Start Free Trial
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 2: WHY MOST BETTORS LOSE -->
+    <section class="py-16 bg-white">
+        <div class="container mx-auto px-6 max-w-6xl">
+            <h2 class="text-4xl md:text-5xl font-bold text-center mb-12 text-brand-navy">
+                Why You're Losing
+            </h2>
+            <div class="max-w-4xl mx-auto">
+                <div class="space-y-6 mb-8">
+                    <div class="flex items-start">
+                        <svg class="w-6 h-6 text-brand-cta mr-4 mt-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                        </svg>
+                        <p class="text-lg text-brand-text">You bet based on names and gut feelings</p>
+                    </div>
+                    <div class="flex items-start">
+                        <svg class="w-6 h-6 text-brand-cta mr-4 mt-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                        </svg>
+                        <p class="text-lg text-brand-text">You chase same-game parlays</p>
+                    </div>
+                    <div class="flex items-start">
+                        <svg class="w-6 h-6 text-brand-cta mr-4 mt-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                        </svg>
+                        <p class="text-lg text-brand-text">You don't check hit rate or pitching matchups</p>
+                    </div>
+                    <div class="flex items-start">
+                        <svg class="w-6 h-6 text-brand-cta mr-4 mt-1 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                        </svg>
+                        <p class="text-lg text-brand-text">You bet what looks good, not what's <em>likely</em> to hit</p>
+                    </div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-8 border border-gray-200">
+                    <p class="text-lg text-gray-700 leading-relaxed">
+                        Sportsbooks <strong>already know</strong> your behavior. Mora Bets shows you what they don't want you to know — the <strong>math</strong> behind the line.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 3: WHAT ACTUALLY WINS -->
+    <section class="py-16 bg-brand-bg">
+        <div class="container mx-auto px-6 max-w-6xl">
+            <h2 class="text-4xl md:text-5xl font-bold text-center mb-12 text-brand-navy">
+                What Winning Bettors Actually Do
+            </h2>
+            <div class="max-w-4xl mx-auto">
+                <div class="space-y-8 mb-8">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0 w-8 h-8 bg-brand-cta text-white rounded-full flex items-center justify-center font-bold mr-6">
+                            1
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-brand-text mb-2">Track recent hit rate on common props</h3>
+                            <p class="text-gray-600">(Over 0.5 Hits, Over 1.5 TB, K lines, etc.)</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0 w-8 h-8 bg-brand-cta text-white rounded-full flex items-center justify-center font-bold mr-6">
+                            2
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-brand-text mb-2">Cross it with expected pitcher performance</h3>
+                            <p class="text-gray-600">(K projections, matchup history)</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0 w-8 h-8 bg-brand-cta text-white rounded-full flex items-center justify-center font-bold mr-6">
+                            3
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-brand-text mb-2">Add context</h3>
+                            <p class="text-gray-600">ballpark factor, weather, batter vs pitcher data</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="inline-block bg-white rounded-lg p-8 border border-gray-200 shadow-lg">
+                        <p class="text-2xl font-bold text-brand-navy mb-2">This is probability betting.</p>
+                        <p class="text-lg text-gray-700">
+                            It's how the sharpest bettors stay profitable — and it's what Mora Bets was built to automate.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 4: HOW MORA BETS WORKS -->
+    <section class="py-16 bg-white">
+        <div class="container mx-auto px-6 max-w-6xl">
+            <h2 class="text-4xl md:text-5xl font-bold text-center mb-12 text-brand-navy">
+                How Mora Bets Works
+            </h2>
+            <div class="max-w-3xl mx-auto">
+                <!-- Mora Bets Tool - Single Card -->
+                <div class="bg-white rounded-xl p-8 border-2 border-brand-cta shadow-lg text-center">
+                    <div class="flex items-center justify-center mb-6">
+                        <div class="w-16 h-16 bg-brand-cta text-white rounded-full flex items-center justify-center mr-4">
+                            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-3xl font-bold text-brand-navy">Mora Bets Tool</h3>
+                    </div>
+                    <div class="space-y-4 mb-8 text-left max-w-2xl mx-auto">
+                        <p class="text-lg text-gray-700">• Shows MLB & NFL player props with the best real-world probability edge</p>
+                        <p class="text-lg text-gray-700">• Pulls sportsbook lines + hit rate trends + contextual analysis</p>
+                        <p class="text-lg text-gray-700">• Lets you research smarter and build confident slips</p>
+                        <p class="text-lg text-gray-700">• Multi-sport coverage: Baseball and Football</p>
+                    </div>
+                    <div class="bg-brand-gold text-brand-text px-6 py-3 rounded-full text-lg font-bold inline-block mb-4">
+                        ✅ 3-day free trial
+                    </div>
+                    <div class="text-center">
+                        <a href="/paywall" class="bg-brand-cta hover:bg-brand-green text-white font-bold py-3 px-8 rounded-md text-lg transition-colors inline-block">
+                            Start Free Trial
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- SECTION 5: TESTIMONIALS -->
+    <section class="py-16 bg-brand-bg">
+        <div class="container mx-auto px-6 max-w-6xl">
+            <h2 class="text-4xl md:text-5xl font-bold text-center mb-12 text-brand-navy">
+                What Bettors Are Saying
+            </h2>
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                <div class="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
+                    <p class="text-gray-700 mb-4 italic">
+                        "Went from losing 6 in a row to hitting 4 straight picks — all I did was stop betting what <em>felt</em> good."
+                    </p>
+                    <p class="font-bold text-brand-navy">— Julian, AZ</p>
+                </div>
+                <div class="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
+                    <p class="text-gray-700 mb-4 italic">
+                        "I used the Mora Bets Tool + proper bankroll strategy. Turned $10 into $400 in 3 weeks."
+                    </p>
+                    <p class="font-bold text-brand-navy">— Jesus Mora (Founder)</p>
+                </div>
+                <div class="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
+                    <p class="text-gray-700 mb-4 italic">
+                        "I've never understood odds or matchups like this before. Now I bet like I actually know what I'm doing."
+                    </p>
+                    <p class="font-bold text-brand-navy">— Max, NY</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- SECTION 6: 3-STEP CTA -->
+    <section class="py-20 bg-white">
+        <div class="container mx-auto px-6 text-center max-w-6xl">
+            <h2 class="text-4xl md:text-5xl font-bold mb-12 text-brand-navy">
+                Ready to Bet With an Edge?
+            </h2>
+            <div class="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto mb-12">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-brand-cta text-white rounded-full flex items-center justify-center font-bold text-xl mx-auto mb-4">
+                        1
+                    </div>
+                    <h3 class="text-xl font-bold text-brand-text mb-2">Try the Tool for free for 3 days</h3>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-brand-cta text-white rounded-full flex items-center justify-center font-bold text-xl mx-auto mb-4">
+                        2
+                    </div>
+                    <h3 class="text-xl font-bold text-brand-text mb-2">Use data to make better picks</h3>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-brand-cta text-white rounded-full flex items-center justify-center font-bold text-xl mx-auto mb-4">
+                        3
+                    </div>
+                    <h3 class="text-xl font-bold text-brand-text mb-2">Start winning with real probability data</h3>
+                </div>
+            </div>
+            <div class="mt-8">
+                <a href="/paywall" class="inline-block bg-brand-cta text-white px-10 py-4 rounded-md font-bold hover:bg-brand-green transition-colors text-xl">
+                    Start Free Trial
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="container mx-auto px-6 text-center">
+            <p>&copy; 2025 Mora Bets. All rights reserved.</p>
+            <p class="mt-2 text-gray-400">Secure payments powered by Stripe</p>
+        </div>
+    </footer>
+
+    <script>
+        // Track page view
+        fbq('track', 'ViewContent', {
+            content_name: 'How It Works Page',
+            content_category: 'Landing Page'
+        });
+
+        // User key sign-in functionality
+        document.getElementById('userKeySignIn').addEventListener('click', function() {
+            document.getElementById('keyModal').classList.remove('hidden');
+        });
+
+        document.getElementById('cancelKey').addEventListener('click', function() {
+            document.getElementById('keyModal').classList.add('hidden');
+        });
+
+        document.getElementById('keyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const key = document.getElementById('userKeyInput').value.trim();
+            const errorDiv = document.getElementById('keyError');
+            
+            if (!key) {
+                errorDiv.textContent = 'Please enter a license key';
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+
+            // Direct redirect to dashboard with key parameter
+            window.location.href = `/dashboard?key=${encodeURIComponent(key)}`;
+        });
+
+        // Alternative button click handler as requested
+        document.getElementById('submitKeyBtn').onclick = function () {
+            const key = document.getElementById('userKeyInput').value;
+            if (key) {
+                window.location.href = `/dashboard?key=${key}`;
+            }
+        };
+    </script>
+</body>
+</html>

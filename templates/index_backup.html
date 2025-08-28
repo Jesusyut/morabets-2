@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <!-- ✅ Charset & Viewport -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- ✅ Page Title -->
+    <title>Today's MLB Player Props & Parlays – Mora Bets</title>
+    
+    <!-- ✅ Meta Description -->
+    <meta name="description" content="Daily MLB player prop picks, optimized parlays, and expert insights. See today's top 2-leg picks powered by Mora Bets.">
+    
+    <!-- ✅ Open Graph Tags -->
+    <meta property="og:title" content="Mora Bets – Today's Best MLB Prop Picks">
+    <meta property="og:description" content="Expert-crafted 2-leg parlays and hit prop picks, updated daily.">
+    <meta property="og:url" content="https://morabets.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://morabets.com/assets/og-image.png">
+    
+    <!-- ✅ Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Mora Bets – MLB Prop Picks">
+    <meta name="twitter:description" content="Updated daily with the best 2-leg parlays and MLB player props.">
+    <meta name="twitter:image" content="https://morabets.com/assets/og-image.png">
+    
+    <!-- ✅ Canonical URL -->
+    <link rel="canonical" href="https://morabets.com/">
+    
+    <!-- ✅ Favicon -->
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .stats-card {
+            background: var(--bs-dark);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .probability-high {
+            color: var(--bs-success);
+            font-weight: bold;
+        }
+        .probability-medium {
+            color: var(--bs-warning);
+        }
+        .probability-low {
+            color: var(--bs-danger);
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        .api-endpoint {
+            background: var(--bs-secondary);
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .edge-positive {
+            color: var(--bs-success);
+        }
+        .edge-negative {
+            color: var(--bs-danger);
+        }
+        .matchup-tab {
+            min-width: 140px;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+        .matchup-tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .matchup-tab.active {
+            background-color: var(--bs-primary) !important;
+            color: white !important;
+            border-color: var(--bs-primary) !important;
+        }
+        .player-card {
+            transition: transform 0.2s ease;
+        }
+        .player-card:hover {
+            transform: translateY(-2px);
+        }
+        .prop-item {
+            transition: background-color 0.2s ease;
+        }
+        .prop-item:hover {
+            background-color: var(--bs-secondary);
+        }
+    </style>
+    
+    <!-- ✅ JSON-LD Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Mora Bets",
+        "url": "https://morabets.com/",
+        "description": "Mora Bets provides daily MLB prop bets and parlays using sharp betting analysis. Explore today's picks for hits, TB, HR, and more.",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Mora Bets"
+        }
+    }
+    </script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line"></i> Mora Bets
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#odds">Odds</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#props">Player Props</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#tools">Tools</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#api">API</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="stats-card">
+                    <h1><i class="fas fa-chart-line"></i> Mora Bets</h1>
+                    <p class="text-muted">Advanced sports betting analytics with real-time odds and player prop insights</p>
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-clock text-primary me-2"></i>
+                                <span>Last Updated: <strong id="last-updated">Loading...</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-users text-info me-2"></i>
+                                <span>Active Matchups: <strong id="matchup-count">Loading...</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-sync-alt text-warning me-2"></i>
+                                <span>Live Odds: <strong id="sync-status">Synced</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabbed Navigation -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <ul class="nav nav-pills nav-justified" id="betting-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="moneylines-tab" data-bs-toggle="pill" data-bs-target="#moneylines-pane" type="button" role="tab">
+                            <i class="fas fa-percentage me-2"></i>Moneylines
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="props-tab" data-bs-toggle="pill" data-bs-target="#props-pane" type="button" role="tab">
+                            <i class="fas fa-baseball-ball me-2"></i>Player Props
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="combos-tab" data-bs-toggle="pill" data-bs-target="#combos-pane" type="button" role="tab">
+                            <i class="fas fa-star me-2"></i>Today's Picks
+                            <span class="badge bg-success ms-1">New</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="profit-tab" data-bs-toggle="pill" data-bs-target="#profit-pane" type="button" role="tab">
+                            <i class="fas fa-chart-line me-2"></i>How to Profit
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content mt-4" id="betting-tab-content">
+
+            <!-- Moneylines Tab -->
+            <div class="tab-pane fade show active" id="moneylines-pane" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="stats-card">
+                            <h3><i class="fas fa-percentage"></i> High Probability Moneylines (≥60%)</h3>
+                            <div id="moneylines-container">
+                                <div class="loading">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading high probability bets...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Player Props Tab -->
+            <div class="tab-pane fade" id="props-pane" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="stats-card">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3><i class="fas fa-baseball-ball"></i> MLB Player Props</h3>
+                                <div class="badge bg-secondary" id="total-props-count">0 total props</div>
+                            </div>
+                            
+                            <!-- Horizontal Matchup Navigation -->
+                            <div class="mb-4">
+                                <h5><i class="fas fa-calendar-alt"></i> Today's Games</h5>
+                                <div id="matchup-tabs" class="d-flex flex-wrap gap-2" style="overflow-x: auto; padding: 10px 0;">
+                                    <div class="loading">
+                                        <i class="fas fa-spinner fa-spin"></i> Loading matchups...
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Active Matchup Display -->
+                            <div id="active-matchup-container">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h4 id="active-matchup-title">Select a matchup above</h4>
+                                    <div class="badge bg-info" id="active-matchup-count">0 props</div>
+                                </div>
+                                
+                                <!-- Player Props Grid -->
+                                <div id="matchup-props-container">
+                                    <div class="alert alert-info text-center">
+                                        <i class="fas fa-mouse-pointer me-2"></i>
+                                        Select a game above to view player props for that matchup
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Today's Picks Tab -->
+            <div class="tab-pane fade" id="combos-pane" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="stats-card">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3><i class="fas fa-star"></i> Today's Picks</h3>
+                                <div class="d-flex gap-2">
+                                    <span class="badge bg-primary">GPT-4 Powered</span>
+                                    <button class="btn btn-primary btn-sm" id="refresh-smart-combo">
+                                        <i class="fas fa-sync-alt"></i> Generate New Analysis
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-success mb-3">
+                                <h6><i class="fas fa-magic"></i> Lean Daily Recommendations</h6>
+                                <p class="mb-0">AI analyzes today's MLB props to generate 2 carefully selected parlays: one high-probability double and one risk-reward play with clear reasoning.</p>
+                            </div>
+                            
+                            <div id="todays-picks-container">
+                                <div class="loading">
+                                    <i class="fas fa-spinner fa-spin"></i> Generating today's picks...
+                                </div>
+                            </div>
+                            
+                            <div id="smart-combo-meta" class="text-muted mt-3" style="font-size: 0.9em;">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <span>Active Matchup: <strong id="active-smart-combo-matchup">None</strong></span>
+                                    </div>
+                                    <div class="col-md-6 text-md-end">
+                                        <span>Last Updated: <strong id="smart-combo-last-updated">Never</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- How to Profit Tab -->
+            <div class="tab-pane fade" id="profit-pane" role="tabpanel">
+                <div class="row">
+                    <div class="col-12">
+                        <div class="stats-card">
+                            <div class="text-center mb-4">
+                                <h3><i class="fas fa-chart-line text-success"></i> How to Profit with Mora Bets</h3>
+                                <p class="text-muted lead">Mora Bets gives you the math. Here's how to use it to actually make money.</p>
+                            </div>
+                            
+                            <!-- Bankroll Management Section -->
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <i class="fas fa-bullseye text-primary me-3" style="font-size: 1.5em;"></i>
+                                    <h4 class="mb-0">Bankroll Management is Everything</h4>
+                                </div>
+                                <div class="alert alert-info">
+                                    <ul class="mb-0">
+                                        <li><strong>Use fixed bankroll and unit system</strong> - Risk only 1-5% per bet</li>
+                                        <li><strong>Avoid chasing losses</strong> - Stick to your system regardless of results</li>
+                                        <li><strong>1 unit = 1-5% of bankroll</strong> - Conservative sizing protects your capital</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Player Diversification Section -->
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <i class="fas fa-brain text-warning me-3" style="font-size: 1.5em;"></i>
+                                    <h4 class="mb-0">Don't Overuse Players in the Same Slip</h4>
+                                </div>
+                                <div class="alert alert-warning">
+                                    <ul class="mb-0">
+                                        <li><strong>Avoid same player across multiple props</strong> - One bad performance kills entire slip</li>
+                                        <li><strong>Diversify across different players/games</strong> - Spread your risk intelligently</li>
+                                        <li><strong>Reduce correlation risk</strong> - Independent events have better odds</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Slip Size Section -->
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <i class="fas fa-flask text-info me-3" style="font-size: 1.5em;"></i>
+                                    <h4 class="mb-0">3-4 Picks Max Per Slip</h4>
+                                </div>
+                                <div class="alert alert-info">
+                                    <ul class="mb-0">
+                                        <li><strong>Avoid 5-leg entries</strong> - Math gets exponentially harder</li>
+                                        <li><strong>Best EV is from 2-4 legs</strong> - Sweet spot for risk vs reward</li>
+                                        <li><strong>Focus on realistic wins</strong> - Not gambling for lottery tickets</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Edge Selection Section -->
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <i class="fas fa-check-circle text-success me-3" style="font-size: 1.5em;"></i>
+                                    <h4 class="mb-0">Tail the Picks with the Highest Edge</h4>
+                                </div>
+                                <div class="alert alert-success">
+                                    <ul class="mb-2">
+                                        <li><strong>Only bet props with 60%+ hit probability</strong> - Look for green "High" confidence badges</li>
+                                        <li><strong>Understand positive expected value</strong> - When your probability exceeds book's implied odds</li>
+                                    </ul>
+                                    <div class="card mt-3">
+                                        <div class="card-body">
+                                            <h6 class="card-title"><i class="fas fa-calculator"></i> Example Edge Calculation</h6>
+                                            <p class="card-text">
+                                                <strong>Mora Bets shows:</strong> 66% hit probability<br>
+                                                <strong>Book odds:</strong> +120 (52% implied probability)<br>
+                                                <strong>Your edge:</strong> 66% - 52% = <span class="text-success fw-bold">14% edge</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tracking Section -->
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <i class="fas fa-chart-bar text-primary me-3" style="font-size: 1.5em;"></i>
+                                    <h4 class="mb-0">Track Everything</h4>
+                                </div>
+                                <div class="alert alert-primary">
+                                    <ul class="mb-0">
+                                        <li><strong>Log all bets:</strong> Date, picks, units risked, result</li>
+                                        <li><strong>Track your hit rate</strong> - Compare against Mora Bets predictions</li>
+                                        <li><strong>Monthly profit/loss review</strong> - Improve long-term strategy</li>
+                                        <li><strong>Identify your best bet types</strong> - Double down on what works</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- Sample Strategy Section -->
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center mb-3">
+                                    <i class="fas fa-money-bill-wave text-success me-3" style="font-size: 1.5em;"></i>
+                                    <h4 class="mb-0">Sample Weekly Strategy</h4>
+                                </div>
+                                <div class="card">
+                                    <div class="card-header bg-success text-white">
+                                        <h5 class="mb-0"><i class="fas fa-dollar-sign"></i> $300 Bankroll Example</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <ul class="list-unstyled">
+                                                    <li><i class="fas fa-check text-success"></i> <strong>$6 per unit</strong> (2% of bankroll)</li>
+                                                    <li><i class="fas fa-check text-success"></i> <strong>1-2 slips per day</strong> maximum</li>
+                                                    <li><i class="fas fa-check text-success"></i> <strong>3-4 legs max</strong> per slip</li>
+                                                </ul>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <ul class="list-unstyled">
+                                                    <li><i class="fas fa-times text-danger"></i> No same player stacking</li>
+                                                    <li><i class="fas fa-times text-danger"></i> No chasing losses</li>
+                                                    <li><i class="fas fa-times text-danger"></i> No 5+ leg lottery tickets</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        <div class="alert alert-info mt-3 mb-0">
+                                            <strong>Weekly Goal:</strong> 5-10% bankroll growth through consistent, high-probability betting
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bottom CTA -->
+                            <div class="text-center mt-4">
+                                <div class="alert alert-light border">
+                                    <h5><i class="fas fa-lightbulb text-warning"></i> Remember</h5>
+                                    <p class="mb-0">Sports betting is about <strong>long-term expected value</strong>, not individual wins. Use Mora Bets' data to find real edges, manage your bankroll properly, and track everything. The math will work in your favor over time.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        
+        <!-- Betting Tools Sidebar -->
+        <div class="row mt-4">
+            <div class="col-lg-6">
+                <div class="stats-card" id="tools">
+                    <h3><i class="fas fa-calculator"></i> Betting Tools</h3>
+                    
+                    <div class="mb-4">
+                        <h5>Edge Calculator</h5>
+                        <div class="mb-2">
+                            <input type="number" id="edge-prob" class="form-control" placeholder="True Probability (0-1)" step="0.01" min="0" max="1">
+                        </div>
+                        <div class="mb-2">
+                            <input type="number" id="edge-odds" class="form-control" placeholder="Book Odds (e.g., +150)">
+                        </div>
+                        <button class="btn btn-primary" onclick="calculateEdge()">Calculate Edge</button>
+                        <div id="edge-result" class="mt-2"></div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5>Kelly Bet Size</h5>
+                        <div class="mb-2">
+                            <input type="number" id="kelly-prob" class="form-control" placeholder="Probability (0-1)" step="0.01" min="0" max="1">
+                        </div>
+                        <div class="mb-2">
+                            <input type="number" id="kelly-odds" class="form-control" placeholder="Odds (e.g., +150)">
+                        </div>
+                        <div class="mb-2">
+                            <input type="number" id="kelly-bankroll" class="form-control" placeholder="Bankroll ($)" step="0.01">
+                        </div>
+                        <button class="btn btn-primary" onclick="calculateKelly()">Calculate Kelly</button>
+                        <div id="kelly-result" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="stats-card">
+                    <h3><i class="fas fa-chart-bar"></i> Live Matchups</h3>
+                    <div id="matchups-container">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i> Loading matchups...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="bg-dark text-center py-3 mt-5">
+        <div class="container">
+            <p class="text-muted mb-0">
+                <i class="fas fa-chart-line"></i> Mora Bets - Advanced Sports Betting Analytics
+            </p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Update betting platform status indicators
+        async function updatePlatformStatus() {
+            try {
+                // Update last updated time
+                const now = new Date();
+                const timeString = now.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true
+                });
+                document.getElementById('last-updated').textContent = timeString;
+                
+                // Get matchup count
+                const propsResponse = await fetch('/player_props')
+                    .catch(err => {
+                        console.error('Failed to fetch matchups:', err);
+                        throw err;
+                    });
+                const propsData = await propsResponse.json();
+                
+                if (propsData.status === 'enriching') {
+                    document.getElementById('matchup-count').textContent = 'Processing...';
+                } else {
+                    const matchupCount = typeof propsData === 'object' && propsData !== null ? 
+                        Object.keys(propsData).length : 0;
+                    document.getElementById('matchup-count').textContent = matchupCount;
+                }
+                
+                // Update sync status
+                const statusResponse = await fetch('/api/status')
+                    .catch(err => {
+                        console.error('Failed to fetch status:', err);
+                        throw err;
+                    });
+                const statusData = await statusResponse.json();
+                const syncStatus = statusData.odds_api_key_set ? 'Synced' : 'Offline';
+                document.getElementById('sync-status').textContent = syncStatus;
+                document.getElementById('sync-status').className = statusData.odds_api_key_set ? 'text-success' : 'text-danger';
+                
+            } catch (error) {
+                console.error('Error updating platform status:', error);
+                document.getElementById('last-updated').textContent = 'Error';
+                document.getElementById('matchup-count').textContent = '0';
+                document.getElementById('sync-status').textContent = 'Offline';
+            }
+        }
+
+        // Load high probability moneylines
+        async function loadMoneylines() {
+            try {
+                const response = await fetch('/api/filtered_moneylines')
+                    .catch(err => {
+                        console.error('Failed to fetch moneylines:', err);
+                        throw err;
+                    });
+                const data = await response.json();
+                
+                const container = document.getElementById('moneylines-container');
+                
+                if (data.error) {
+                    container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+                    return;
+                }
+
+                if (data.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">No high probability bets found at this time.</div>';
+                    return;
+                }
+
+                container.innerHTML = data.map(bet => `
+                    <div class="card mb-2">
+                        <div class="card-body">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <strong>${bet.team}</strong><br>
+                                    <small class="text-muted">${bet.teams[0]} vs ${bet.teams[1]}</small>
+                                </div>
+                                <div class="col-md-3 text-center">
+                                    <span class="probability-high">${bet.probability}%</span><br>
+                                    <small>Win Probability</small>
+                                </div>
+                                <div class="col-md-3 text-end">
+                                    <strong>${bet.odds > 0 ? '+' : ''}${bet.odds}</strong><br>
+                                    <small class="text-muted">${bet.bookmaker}</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading moneylines:', error);
+                document.getElementById('moneylines-container').innerHTML = '<div class="alert alert-danger">Error loading data</div>';
+            }
+        }
+
+        // Global variables for matchup data
+        let allMatchups = {};
+        let activeMatchup = null;
+        
+        // Load player props (now grouped by matchup)
+        async function loadPlayerProps() {
+            try {
+                const response = await fetch('/player_props')
+                    .catch(err => {
+                        console.error('Failed to fetch props:', err);
+                        throw err;
+                    });
+                const data = await response.json();
+                
+                const matchupTabsContainer = document.getElementById('matchup-tabs');
+                
+                if (data.error) {
+                    matchupTabsContainer.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+                    return;
+                }
+
+                // Handle enrichment progress response  
+                if (data.status === 'enriching') {
+                    matchupTabsContainer.innerHTML = `
+                        <div class="alert alert-info">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-spinner fa-spin me-2"></i>
+                                <div>
+                                    <strong>Processing Matchups</strong><br>
+                                    ${data.message || 'Enriching player props...'}<br>
+                                    <small class="text-muted">This may take a moment</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    // Retry in 30 seconds
+                    setTimeout(loadPlayerProps, 30000);
+                    return;
+                }
+
+                // Expect grouped matchup data (object with matchup keys)
+                allMatchups = data;
+                
+                if (!data || Object.keys(data).length === 0) {
+                    matchupTabsContainer.innerHTML = '<div class="alert alert-info">No matchups available at this time.</div>';
+                    return;
+                }
+                
+                // Calculate total props across all matchups
+                const totalProps = Object.values(allMatchups).reduce((sum, props) => sum + (props.length || 0), 0);
+                document.getElementById('total-props-count').textContent = `${totalProps} total props`;
+
+                // Create matchup navigation tabs
+                const matchupKeys = Object.keys(allMatchups).sort();
+                console.log(`[DEBUG] Loading ${matchupKeys.length} matchups with ${totalProps} total props`);
+                
+                matchupTabsContainer.innerHTML = matchupKeys.map((matchup, index) => {
+                    const propsCount = allMatchups[matchup].length;
+                    const isActive = index === 0; // Make first matchup active by default
+                    
+                    return `
+                        <button 
+                            class="btn btn-outline-primary matchup-tab ${isActive ? 'active' : ''}" 
+                            data-matchup="${matchup}"
+                            onclick="selectMatchup('${matchup}')"
+                        >
+                            <div class="text-center">
+                                <div class="fw-bold">${matchup}</div>
+                                <small class="text-muted">${propsCount} props</small>
+                            </div>
+                        </button>
+                    `;
+                }).join('');
+                
+                // Auto-select first matchup
+                if (matchupKeys.length > 0) {
+                    selectMatchup(matchupKeys[0]);
+                }
+                
+            } catch (error) {
+                console.error('Error loading player props:', error);
+                console.error('Error details:', error.message, error.stack);
+                document.getElementById('matchup-tabs').innerHTML = `<div class="alert alert-danger">Error loading data: ${error.message}</div>`;
+            }
+        }
+        
+        // Select and display a specific matchup
+        async function selectMatchup(matchupKey) {
+            activeMatchup = matchupKey;
+            
+            // Update active tab styling
+            document.querySelectorAll('.matchup-tab').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.matchup === matchupKey) {
+                    tab.classList.add('active');
+                }
+            });
+            
+            // Show loading state
+            document.getElementById('active-matchup-title').textContent = matchupKey;
+            document.getElementById('active-matchup-count').textContent = 'Loading...';
+            document.getElementById('matchup-props-container').innerHTML = `
+                <div class="text-center">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-3"></i>
+                    <p>Loading props for ${matchupKey}...</p>
+                </div>
+            `;
+            
+            try {
+                // Fetch filtered props for this specific matchup
+                const response = await fetch(`/player_props?matchup=${encodeURIComponent(matchupKey)}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('matchup-props-container').innerHTML = `
+                        <div class="alert alert-warning">${data.error}</div>
+                    `;
+                    return;
+                }
+                
+                // Get props from the filtered response (should be grouped by matchup)
+                const matchupProps = data[matchupKey] || [];
+                
+                // Update count
+                document.getElementById('active-matchup-count').textContent = `${matchupProps.length} props`;
+                
+                // Display props for this matchup
+                displayMatchupProps(matchupProps);
+                
+                console.log(`🎯 Loaded ${matchupProps.length} filtered props for ${matchupKey}`);
+                
+            } catch (error) {
+                console.error('Error loading matchup props:', error);
+                document.getElementById('matchup-props-container').innerHTML = `
+                    <div class="alert alert-danger">Error loading props for this matchup</div>
+                `;
+            }
+        }
+        
+        // Display props for the active matchup
+        function displayMatchupProps(props) {
+            const container = document.getElementById('matchup-props-container');
+            
+            if (!props || props.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">No props available for this matchup.</div>';
+                return;
+            }
+            
+            // Group players by teams for better organization
+            const playerGroups = {};
+            props.forEach(prop => {
+                const player = prop.player || 'Unknown';
+                if (!playerGroups[player]) {
+                    playerGroups[player] = [];
+                }
+                playerGroups[player].push(prop);
+            });
+            
+            // Display player cards
+            const playerKeys = Object.keys(playerGroups).sort();
+            console.log(`[DEBUG] Displaying ${playerKeys.length} players for ${activeMatchup}`);
+            
+            container.innerHTML = `
+                <div class="row">
+                    ${playerKeys.map(player => {
+                        const playerProps = playerGroups[player];
+                        return `
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card player-card">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0">
+                                            <i class="fas fa-user me-2"></i>${player}
+                                            <small class="float-end">${playerProps.length} props</small>
+                                        </h6>
+                                    </div>
+                                    <div class="card-body p-2">
+                                        ${playerProps.map(prop => generatePropCard(prop)).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+        
+        // Generate individual prop card HTML
+        function generatePropCard(prop) {
+            const stat = prop.stat || 'unknown';
+            const line = prop.line || 0;
+            const player = prop.player || 'Unknown';
+            const odds = prop.odds || 'N/A';
+            const book = prop.sportsbook || 'Unknown';
+            
+            // Get contextual hit rate data
+            const contextual = prop.contextual_hit_rate || {};
+            let hitRateDisplay = 'N/A';
+            let confidenceBadge = '';
+            
+            if (contextual.hit_rate !== undefined && !contextual.error) {
+                const hitRateValue = contextual.hit_rate * 100;
+                hitRateDisplay = `${hitRateValue.toFixed(1)}%`;
+                
+                // Color-coded confidence badges
+                if (hitRateValue >= 60) {
+                    confidenceBadge = '<span class="badge bg-success">High</span>';
+                } else if (hitRateValue >= 50) {
+                    confidenceBadge = '<span class="badge bg-warning">Medium</span>';
+                } else {
+                    confidenceBadge = '<span class="badge bg-danger">Low</span>';
+                }
+            }
+            
+            // Format stat name for display
+            const statDisplayNames = {
+                'batter_total_bases': 'Total Bases',
+                'batter_hits': 'Hits', 
+                'batter_home_runs': 'Home Runs',
+                'batter_rbi': 'RBI',
+                'batter_runs': 'Runs',
+                'batter_stolen_bases': 'Stolen Bases',
+                'batter_walks': 'Walks',
+                'batter_strikeouts': 'Strikeouts',
+                'pitcher_strikeouts': 'Strikeouts',
+                'pitcher_hits_allowed': 'Hits Allowed',
+                'pitcher_earned_runs': 'Earned Runs',
+                'pitcher_outs': 'Outs',
+                'pitcher_walks': 'Walks'
+            };
+            
+            const statDisplay = statDisplayNames[stat] || stat
+                .replace('batter_', '')
+                .replace('pitcher_', '')
+                .replace('_', ' ')
+                .replace(/\b\w/g, l => l.toUpperCase());
+            
+            return `
+                <div class="prop-item mb-2 p-2 border rounded">
+                    <div class="row align-items-center">
+                        <div class="col-8">
+                            <div class="fw-bold">${statDisplay}</div>
+                            <div class="text-muted small">${book} | ${odds}</div>
+                        </div>
+                        <div class="col-4 text-end">
+                            <div class="fw-bold">${line}</div>
+                            <div class="d-flex justify-content-end gap-1 mt-1">
+                                ${confidenceBadge}
+                                <small class="text-muted">${hitRateDisplay}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Load matchups
+        async function loadMatchups() {
+            try {
+                const response = await fetch('/api/matchups')
+                    .catch(err => {
+                        console.error('Failed to fetch matchups:', err);
+                        throw err;
+                    });
+                const data = await response.json();
+                
+                const container = document.getElementById('matchups-container');
+                
+                if (data.error) {
+                    container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+                    return;
+                }
+
+                if (data.length === 0) {
+                    container.innerHTML = '<div class="alert alert-info">No matchups available.</div>';
+                    return;
+                }
+
+                container.innerHTML = data.slice(0, 5).map(matchup => `
+                    <div class="card mb-2">
+                        <div class="card-body">
+                            <h6>${matchup.matchup}</h6>
+                            <small class="text-muted">${new Date(matchup.start_time).toLocaleString()}</small>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading matchups:', error);
+                document.getElementById('matchups-container').innerHTML = '<div class="alert alert-danger">Error loading data</div>';
+            }
+        }
+
+        // Calculate edge
+        async function calculateEdge() {
+            const prob = document.getElementById('edge-prob').value;
+            const odds = document.getElementById('edge-odds').value;
+            
+            if (!prob || !odds) {
+                document.getElementById('edge-result').innerHTML = '<div class="alert alert-warning">Please enter both probability and odds</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/edge?prob=${prob}&odds=${odds}`)
+                    .catch(err => {
+                        console.error('Failed to fetch edge calculation:', err);
+                        throw err;
+                    });
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('edge-result').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+
+                const edgeClass = data.edge > 0 ? 'edge-positive' : 'edge-negative';
+                document.getElementById('edge-result').innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>Edge: <span class="${edgeClass}">${data.edge}%</span></strong><br>
+                        True Prob: ${(data.true_prob * 100).toFixed(2)}%<br>
+                        Implied Prob: ${(data.implied_prob * 100).toFixed(2)}%
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error calculating edge:', error);
+                document.getElementById('edge-result').innerHTML = '<div class="alert alert-danger">Error calculating edge</div>';
+            }
+        }
+
+        // Calculate Kelly bet size
+        async function calculateKelly() {
+            const prob = document.getElementById('kelly-prob').value;
+            const odds = document.getElementById('kelly-odds').value;
+            const bankroll = document.getElementById('kelly-bankroll').value;
+            
+            if (!prob || !odds || !bankroll) {
+                document.getElementById('kelly-result').innerHTML = '<div class="alert alert-warning">Please enter all fields</div>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/kelly?prob=${prob}&odds=${odds}&bankroll=${bankroll}`)
+                    .catch(err => {
+                        console.error('Failed to fetch Kelly calculation:', err);
+                        throw err;
+                    });
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('kelly-result').innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+
+                document.getElementById('kelly-result').innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>Kelly Bet Size: $${data.kelly_bet}</strong><br>
+                        <small>This is 25% of full Kelly for risk management</small>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error calculating Kelly:', error);
+                document.getElementById('kelly-result').innerHTML = '<div class="alert alert-danger">Error calculating Kelly bet</div>';
+            }
+        }
+
+
+
+        // Enhanced search and filter functionality
+        function applyFilters() {
+            const searchTerm = document.getElementById('player-search').value.toLowerCase().trim();
+            const statFilter = document.getElementById('stat-filter').value;
+            const confidenceFilter = document.getElementById('confidence-filter').value;
+            
+            if (!allProps || allProps.length === 0) {
+                return;
+            }
+            
+            // Filter the props data directly
+            allFilteredProps = allProps.filter(prop => {
+                let shouldShow = true;
+                
+                // Apply search filter (search in player name and stat type)
+                if (searchTerm) {
+                    const playerName = (prop.player || '').toLowerCase();
+                    const statName = (prop.stat || '').toLowerCase();
+                    
+                    // Also check display names for stats
+                    const statDisplayNames = {
+                        'batter_total_bases': 'total bases',
+                        'batter_hits': 'hits',
+                        'batter_rbi': 'rbi',
+                        'batter_runs': 'runs',
+                        'batter_home_runs': 'home runs',
+                        'batter_stolen_bases': 'stolen bases',
+                        'batter_walks': 'walks',
+                        'batter_strikeouts': 'strikeouts',
+                        'batter_hits_runs_rbis': 'h+r+rbi',
+                        'pitcher_strikeouts': 'pitcher strikeouts',
+                        'pitcher_hits_allowed': 'pitcher hits allowed',
+                        'pitcher_earned_runs': 'pitcher earned runs',
+                        'pitcher_walks': 'pitcher walks',
+                        'pitcher_outs': 'pitcher outs',
+                        'batter_fantasy_score': 'fantasy score',
+                        'pitcher_fantasy_score': 'pitcher fantasy score'
+                    };
+                    
+                    const statDisplayName = (statDisplayNames[statName] || statName).toLowerCase();
+                    
+                    if (!playerName.includes(searchTerm) && 
+                        !statName.includes(searchTerm) && 
+                        !statDisplayName.includes(searchTerm)) {
+                        shouldShow = false;
+                    }
+                }
+                
+                // Apply stat filter
+                if (statFilter !== 'all' && prop.stat !== statFilter) {
+                    shouldShow = false;
+                }
+                
+                // Apply confidence filter
+                if (confidenceFilter !== 'all') {
+                    const contextualHitRate = prop.contextual_hit_rate || {};
+                    let confidence = 'unknown';
+                    
+                    if (contextualHitRate.hit_rate !== undefined && !contextualHitRate.error) {
+                        const hitRateValue = contextualHitRate.hit_rate * 100;
+                        if (hitRateValue >= 60) {
+                            confidence = 'high';
+                        } else if (hitRateValue >= 50) {
+                            confidence = 'medium';
+                        } else {
+                            confidence = 'low';
+                        }
+                    }
+                    
+                    if (confidence !== confidenceFilter) {
+                        shouldShow = false;
+                    }
+                }
+                
+                return shouldShow;
+            });
+            
+            // Reset display limit when filtering
+            currentDisplayLimit = 50;
+            
+            // Re-render with filtered data
+            renderPropsDisplay();
+        }
+
+        function resetFilters() {
+            document.getElementById('player-search').value = '';
+            document.getElementById('stat-filter').value = 'all';
+            document.getElementById('confidence-filter').value = 'all';
+            applyFilters();
+        }
+
+        // Global variables to store all props and current display limit
+        let allProps = [];
+        let allFilteredProps = [];
+        let currentDisplayLimit = 50;
+
+        function loadMoreProps() {
+            currentDisplayLimit += 50; // Increase by 50 more props
+            renderPropsDisplay();
+        }
+
+        function renderPropsDisplay() {
+            const container = document.getElementById('props-container');
+            const propsToShow = allFilteredProps.slice(0, currentDisplayLimit);
+            
+            // Update props count
+            document.getElementById('props-count').textContent = `${propsToShow.length} of ${allFilteredProps.length} props`;
+
+            try {
+                container.innerHTML = propsToShow.map(prop => {
+                    // Get contextual hit rate data
+                    const contextualHitRate = prop.contextual_hit_rate || {};
+                    const fantasyData = prop.fantasy_hit_rate || {};
+                    
+                    // Handle contextual hit rate display
+                    let hitRateDisplay = 'N/A';
+                    let hitRateClass = 'text-muted';
+                    let sampleSize = 'N/A';
+                    
+                    if (contextualHitRate.hit_rate !== undefined && !contextualHitRate.error) {
+                        const hitRateValue = contextualHitRate.hit_rate * 100;
+                        hitRateDisplay = hitRateValue.toFixed(1);
+                        sampleSize = contextualHitRate.sample_size || 'N/A';
+                        
+                        // Color coding based on hit rate
+                        if (hitRateValue >= 60) {
+                            hitRateClass = 'text-success fw-bold';
+                        } else if (hitRateValue >= 50) {
+                            hitRateClass = 'text-warning fw-bold';
+                        } else {
+                            hitRateClass = 'text-danger fw-bold';
+                        }
+                    } else if (contextualHitRate.error) {
+                        // Show error details for debugging
+                        if (contextualHitRate.sample_size !== undefined && contextualHitRate.sample_size < 2) {
+                            hitRateDisplay = 'Insufficient Data';
+                            hitRateClass = 'text-muted';
+                        } else {
+                            hitRateDisplay = 'No Data';
+                            hitRateClass = 'text-muted';
+                        }
+                    }
+                    
+                    // Handle fantasy hit rate display
+                    let fantasyDisplay = 'N/A';
+                    let fantasyClass = 'text-muted';
+                    
+                    if (fantasyData.fantasy_hit_rate !== undefined && !fantasyData.error) {
+                        const fantasyValue = fantasyData.fantasy_hit_rate * 100;
+                        fantasyDisplay = fantasyValue.toFixed(1);
+                        
+                        // Color coding for fantasy hit rate
+                        if (fantasyValue >= 60) {
+                            fantasyClass = 'text-success';
+                        } else if (fantasyValue >= 50) {
+                            fantasyClass = 'text-warning';
+                        } else {
+                            fantasyClass = 'text-danger';
+                        }
+                    }
+                    
+                    // Get opponent and pitcher handedness info
+                    const opponentInfo = contextualHitRate.opponent_id ? `vs ${contextualHitRate.opponent_id}` : '';
+                    const pitcherHand = contextualHitRate.pitcher_hand ? `${contextualHitRate.pitcher_hand}HP` : '';
+                    const contextInfo = [opponentInfo, pitcherHand].filter(Boolean).join(' ');
+
+                    // Format stat display name using the same mapping
+                    const statDisplayNames = {
+                        'batter_total_bases': 'Total Bases',
+                        'batter_hits': 'Hits',
+                        'batter_rbi': 'RBI',
+                        'batter_runs': 'Runs',
+                        'batter_home_runs': 'Home Runs',
+                        'batter_stolen_bases': 'Stolen Bases',
+                        'batter_walks': 'Walks',
+                        'batter_strikeouts': 'Strikeouts',
+                        'batter_hits_runs_rbis': 'H+R+RBI',
+                        'pitcher_strikeouts': 'Pitcher Strikeouts',
+                        'pitcher_hits_allowed': 'Pitcher Hits Allowed',
+                        'pitcher_earned_runs': 'Pitcher Earned Runs',
+                        'pitcher_walks': 'Pitcher Walks',
+                        'pitcher_outs': 'Pitcher Outs',
+                        'batter_fantasy_score': 'Fantasy Score',
+                        'pitcher_fantasy_score': 'Pitcher Fantasy Score'
+                    };
+                    
+                    const statDisplay = statDisplayNames[prop.stat] || prop.stat
+                        .replace('batter_', '')
+                        .replace('pitcher_', '')
+                        .replace('_', ' ')
+                        .replace(/\b\w/g, l => l.toUpperCase());
+
+                    // Parse player name from prop.player
+                    const playerName = prop.player || 'Unknown Player';
+                    
+                    // Get team vs opponent info (simplified)
+                    const teamVs = contextualHitRate.opponent_id ? `vs Team ${contextualHitRate.opponent_id}` : 'vs TBD';
+                    
+                    // Calculate confidence level for badge
+                    let confidenceClass = 'bg-secondary';
+                    let confidenceText = 'Unknown';
+                    
+                    if (contextualHitRate.hit_rate !== undefined && !contextualHitRate.error) {
+                        const hitRateValue = contextualHitRate.hit_rate * 100;
+                        if (hitRateValue >= 60) {
+                            confidenceClass = 'bg-success';
+                            confidenceText = 'High';
+                        } else if (hitRateValue >= 50) {
+                            confidenceClass = 'bg-warning';
+                            confidenceText = 'Medium';
+                        } else {
+                            confidenceClass = 'bg-danger';
+                            confidenceText = 'Low';
+                        }
+                    }
+
+                    // Format line display (prop.line is a number like 1.5)
+                    const overUnder = 'Over';
+                    const lineValue = prop.line || '0';
+                    const lineDisplay = `${overUnder} ${lineValue}`;
+
+                    return `
+                    <div class="prop-card card mb-2 border-0 shadow-sm" data-player="${playerName.toLowerCase()}" data-stat="${prop.stat}" data-confidence="${confidenceText.toLowerCase()}">
+                        <div class="card-body p-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2 text-center">
+                                    <div class="player-avatar bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 45px; height: 45px; margin: 0 auto;">
+                                        <i class="fas fa-user" style="font-size: 0.9em;"></i>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6 class="mb-1 fw-bold">${playerName}</h6>
+                                    <p class="text-muted mb-1 small">${teamVs}</p>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-light text-dark small">${statDisplay}</span>
+                                        <span class="badge bg-success text-white small">
+                                            ${lineDisplay}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="mb-1">
+                                        <span class="fw-bold">${prop.odds > 0 ? '+' : ''}${prop.odds}</span>
+                                    </div>
+                                    <div class="small text-muted">Odds</div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="mb-1">
+                                        <span class="fw-bold ${hitRateClass}">${hitRateDisplay}%</span>
+                                    </div>
+                                    <div class="small text-muted">Hit Rate</div>
+                                    <div class="small text-muted">(${sampleSize})</div>
+                                </div>
+                                <div class="col-md-2 text-end">
+                                    <div class="mb-2">
+                                        <div class="badge ${confidenceClass} text-white small">${confidenceText}</div>
+                                    </div>
+                                    <div class="small text-muted">${prop.bookmaker}</div>
+                                    ${fantasyDisplay !== 'N/A' ? 
+                                        `<div class="small ${fantasyClass}">Fantasy: ${fantasyDisplay}%</div>` : ''
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+
+                // Add "Load More" button if there are more props to show
+                if (allFilteredProps.length > currentDisplayLimit) {
+                    container.innerHTML += `
+                        <div class="text-center mt-3">
+                            <button class="btn btn-primary" onclick="loadMoreProps()">
+                                Load More Props (${allFilteredProps.length - currentDisplayLimit} remaining)
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                // Add last updated timestamp
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('props-last-updated').innerHTML = `<i class="fas fa-clock"></i> Last Updated: ${lastUpdated}`;
+            } catch (renderError) {
+                console.error('Error rendering props:', renderError);
+                container.innerHTML = `<div class="alert alert-danger">Error rendering props: ${renderError.message}</div>`;
+            }
+        }
+
+        function displayProps(props) {
+            const container = document.getElementById('props-container');
+            const statFilter = document.getElementById('stat-filter');
+            
+            // Filter props based on current stat selection
+            const filteredProps = statFilter.value === 'all' ? props : props.filter(prop => prop.stat === statFilter.value);
+            
+            // Limit display
+            const propsToShow = filteredProps.slice(0, currentDisplayLimit);
+            
+            // Update props count
+            document.getElementById('props-count').textContent = `${propsToShow.length} of ${filteredProps.length} props`;
+
+            try {
+                container.innerHTML = propsToShow.map(prop => {
+                    // Get contextual hit rate data
+                    const contextualHitRate = prop.contextual_hit_rate || {};
+                    const fantasyData = prop.fantasy_hit_rate || {};
+                    
+                    // Handle contextual hit rate display
+                    let hitRateDisplay = 'N/A';
+                    let hitRateClass = 'text-muted';
+                    let sampleSize = 'N/A';
+                    
+                    if (contextualHitRate.hit_rate !== undefined && !contextualHitRate.error) {
+                        const hitRateValue = contextualHitRate.hit_rate * 100;
+                        hitRateDisplay = hitRateValue.toFixed(1);
+                        sampleSize = contextualHitRate.sample_size || 'N/A';
+                        
+                        // Color coding based on hit rate
+                        if (hitRateValue >= 60) {
+                            hitRateClass = 'text-success fw-bold';
+                        } else if (hitRateValue >= 50) {
+                            hitRateClass = 'text-warning fw-bold';
+                        } else {
+                            hitRateClass = 'text-danger fw-bold';
+                        }
+                    } else if (contextualHitRate.error) {
+                        // Show error details for debugging
+                        if (contextualHitRate.sample_size !== undefined && contextualHitRate.sample_size < 2) {
+                            hitRateDisplay = 'Insufficient Data';
+                            hitRateClass = 'text-muted';
+                        } else {
+                            hitRateDisplay = 'No Data';
+                            hitRateClass = 'text-muted';
+                        }
+                    }
+                    
+                    // Handle fantasy hit rate display
+                    let fantasyDisplay = 'N/A';
+                    let fantasyClass = 'text-muted';
+                    
+                    if (fantasyData.fantasy_hit_rate !== undefined && !fantasyData.error) {
+                        const fantasyValue = fantasyData.fantasy_hit_rate * 100;
+                        fantasyDisplay = fantasyValue.toFixed(1);
+                        
+                        // Color coding for fantasy hit rate
+                        if (fantasyValue >= 60) {
+                            fantasyClass = 'text-success';
+                        } else if (fantasyValue >= 50) {
+                            fantasyClass = 'text-warning';
+                        } else {
+                            fantasyClass = 'text-danger';
+                        }
+                    }
+                    
+                    // Get opponent and pitcher handedness info
+                    const opponentInfo = contextualHitRate.opponent_id ? `vs ${contextualHitRate.opponent_id}` : '';
+                    const pitcherHand = contextualHitRate.pitcher_hand ? `${contextualHitRate.pitcher_hand}HP` : '';
+                    const contextInfo = [opponentInfo, pitcherHand].filter(Boolean).join(' ');
+
+                    // Format stat display name using the same mapping
+                    const statDisplayNames = {
+                        'batter_total_bases': 'Total Bases',
+                        'batter_hits': 'Hits',
+                        'batter_rbi': 'RBI',
+                        'batter_runs': 'Runs',
+                        'batter_home_runs': 'Home Runs',
+                        'batter_stolen_bases': 'Stolen Bases',
+                        'batter_walks': 'Walks',
+                        'batter_strikeouts': 'Strikeouts',
+                        'batter_hits_runs_rbis': 'H+R+RBI',
+                        'pitcher_strikeouts': 'Pitcher Strikeouts',
+                        'pitcher_hits_allowed': 'Pitcher Hits Allowed',
+                        'pitcher_earned_runs': 'Pitcher Earned Runs',
+                        'pitcher_walks': 'Pitcher Walks',
+                        'pitcher_outs': 'Pitcher Outs',
+                        'batter_fantasy_score': 'Fantasy Score',
+                        'pitcher_fantasy_score': 'Pitcher Fantasy Score'
+                    };
+                    
+                    const statDisplay = statDisplayNames[prop.stat] || prop.stat
+                        .replace('batter_', '')
+                        .replace('pitcher_', '')
+                        .replace('_', ' ')
+                        .replace(/\b\w/g, l => l.toUpperCase());
+
+                    // Parse player name from prop.player
+                    const playerName = prop.player || 'Unknown Player';
+                    
+                    // Get team vs opponent info (simplified)
+                    const teamVs = contextualHitRate.opponent_id ? `vs Team ${contextualHitRate.opponent_id}` : 'vs TBD';
+                    
+                    // Calculate confidence level for badge
+                    let confidenceClass = 'bg-secondary';
+                    let confidenceText = 'Unknown';
+                    
+                    if (contextualHitRate.hit_rate !== undefined && !contextualHitRate.error) {
+                        const hitRateValue = contextualHitRate.hit_rate * 100;
+                        if (hitRateValue >= 60) {
+                            confidenceClass = 'bg-success';
+                            confidenceText = 'High';
+                        } else if (hitRateValue >= 50) {
+                            confidenceClass = 'bg-warning';
+                            confidenceText = 'Medium';
+                        } else {
+                            confidenceClass = 'bg-danger';
+                            confidenceText = 'Low';
+                        }
+                    }
+
+                    // Format line display (prop.line is a number like 1.5)
+                    const overUnder = 'Over';
+                    const lineValue = prop.line || '0';
+                    const lineDisplay = `${overUnder} ${lineValue}`;
+
+                    return `
+                    <div class="prop-card card mb-2 border-0 shadow-sm" data-player="${playerName.toLowerCase()}" data-stat="${prop.stat}" data-confidence="${confidenceText.toLowerCase()}">
+                        <div class="card-body p-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-2 text-center">
+                                    <div class="player-avatar bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 45px; height: 45px; margin: 0 auto;">
+                                        <i class="fas fa-user" style="font-size: 0.9em;"></i>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <h6 class="mb-1 fw-bold">${playerName}</h6>
+                                    <p class="text-muted mb-1 small">${teamVs}</p>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="badge bg-light text-dark small">${statDisplay}</span>
+                                        <span class="badge bg-success text-white small">
+                                            ${lineDisplay}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="mb-1">
+                                        <span class="fw-bold">${prop.odds > 0 ? '+' : ''}${prop.odds}</span>
+                                    </div>
+                                    <div class="small text-muted">Odds</div>
+                                </div>
+                                <div class="col-md-2 text-center">
+                                    <div class="mb-1">
+                                        <span class="fw-bold ${hitRateClass}">${hitRateDisplay}%</span>
+                                    </div>
+                                    <div class="small text-muted">Hit Rate</div>
+                                    <div class="small text-muted">(${sampleSize})</div>
+                                </div>
+                                <div class="col-md-2 text-end">
+                                    <div class="mb-2">
+                                        <div class="badge ${confidenceClass} text-white small">${confidenceText}</div>
+                                    </div>
+                                    <div class="small text-muted">${prop.bookmaker}</div>
+                                    ${fantasyDisplay !== 'N/A' ? 
+                                        `<div class="small ${fantasyClass}">Fantasy: ${fantasyDisplay}%</div>` : ''
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+
+                // Add "Load More" button if there are more props to show
+                if (filteredProps.length > currentDisplayLimit) {
+                    container.innerHTML += `
+                        <div class="text-center mt-3">
+                            <button class="btn btn-primary" onclick="loadMoreProps()">
+                                Load More Props (${filteredProps.length - currentDisplayLimit} remaining)
+                            </button>
+                        </div>
+                    `;
+                }
+                
+                // Add last updated timestamp
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('props-last-updated').innerHTML = `<i class="fas fa-clock"></i> Last Updated: ${lastUpdated}`;
+            } catch (renderError) {
+                console.error('Error rendering props:', renderError);
+                container.innerHTML = `<div class="alert alert-danger">Error rendering props: ${renderError.message}</div>`;
+            }
+        }
+
+        // Global variables for Today's Picks
+        let todaysPicksLoaded = false;
+        let smartComboResult = null;
+        
+        // Load Smart Combo matchup tabs
+        function loadSmartComboMatchups() {
+            const container = document.getElementById('smart-combo-matchup-tabs');
+            
+            // Use the same matchup data from Player Props
+            if (!allMatchups || Object.keys(allMatchups).length === 0) {
+                container.innerHTML = '<div class="alert alert-info">No matchups available for AI analysis.</div>';
+                return;
+            }
+            
+            const matchupKeys = Object.keys(allMatchups).sort();
+            
+            container.innerHTML = matchupKeys.map((matchup, index) => {
+                const propsCount = allMatchups[matchup].length;
+                const isActive = index === 0; // Make first matchup active by default
+                
+                return `
+                    <button 
+                        class="btn btn-outline-primary matchup-tab ${isActive ? 'active' : ''}" 
+                        data-smart-combo-matchup="${matchup}"
+                        onclick="selectSmartComboMatchup('${matchup}')"
+                    >
+                        <div class="text-center">
+                            <div class="fw-bold">${matchup}</div>
+                            <small class="text-muted">${propsCount} props</small>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+            
+            // Auto-select first matchup
+            if (matchupKeys.length > 0) {
+                selectSmartComboMatchup(matchupKeys[0]);
+            }
+        }
+        
+        // Select matchup and load Smart Combo analysis
+        async function selectSmartComboMatchup(matchupName) {
+            activeSmartComboMatchup = matchupName;
+            
+            // Update active tab styling
+            document.querySelectorAll('[data-smart-combo-matchup]').forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.smartComboMatchup === matchupName) {
+                    tab.classList.add('active');
+                }
+            });
+            
+            // Update metadata
+            document.getElementById('active-smart-combo-matchup').textContent = matchupName;
+            
+            // Load Smart Combo for this matchup
+            await loadSmartComboForMatchup(matchupName);
+        }
+        
+        // Load Smart Combo analysis for specific matchup
+        async function loadSmartComboForMatchup(matchupName) {
+            try {
+                const container = document.getElementById('smart-combo-result-container');
+                container.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading AI analysis...</div>';
+                
+                const response = await fetch(`/smart_combo?matchup=${encodeURIComponent(matchupName)}`);
+                const data = await response.json();
+                
+                if (data.status === 'error') {
+                    container.innerHTML = `<div class="alert alert-danger">Error: ${data.error || 'Failed to generate analysis'}</div>`;
+                    return;
+                }
+                
+                if (data.status === 'no_data') {
+                    container.innerHTML = '<div class="alert alert-info">No props available for this matchup. Please try another game.</div>';
+                    return;
+                }
+                
+                // Store result and update timestamp
+                smartComboResult = data;
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('smart-combo-last-updated').textContent = lastUpdated;
+                
+                // Display result based on type
+                if (data.combo && Array.isArray(data.combo)) {
+                    // Display 2-leg combo
+                    displaySmartCombo(data);
+                } else if (data.best_single) {
+                    // Display single prop fallback
+                    displaySingleProp(data);
+                } else {
+                    container.innerHTML = '<div class="alert alert-warning">Unexpected response format from AI analysis.</div>';
+                }
+                
+            } catch (error) {
+                console.error('Error loading Smart Combo:', error);
+                document.getElementById('smart-combo-result-container').innerHTML = 
+                    `<div class="alert alert-danger">Error loading AI analysis: ${error.message}</div>`;
+            }
+        }
+        
+        // Display 2-leg combo result
+        function displaySmartCombo(data) {
+            const container = document.getElementById('smart-combo-result-container');
+            
+            container.innerHTML = `
+                <div class="card border-success">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-brain me-2"></i>AI 2-Leg Combo for ${data.matchup}
+                            <span class="badge bg-light text-success ms-2">${data.confidence}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="text-primary">Leg 1</h6>
+                                        <p class="mb-1 fw-bold">${data.combo[0]}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <h6 class="text-primary">Leg 2</h6>
+                                        <p class="mb-1 fw-bold">${data.combo[1]}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${data.reason ? `
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-lightbulb me-2"></i>AI Reasoning</h6>
+                                <p class="mb-0">${data.reason}</p>
+                            </div>
+                        ` : ''}
+                        
+                        ${data.payout ? `
+                            <div class="text-center">
+                                <span class="badge bg-warning text-dark fs-6">Expected Payout: ${data.payout}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Display single prop fallback
+        function displaySingleProp(data) {
+            const container = document.getElementById('smart-combo-result-container');
+            
+            container.innerHTML = `
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-star me-2"></i>Top Single Prop for ${data.matchup}
+                            <span class="badge bg-light text-primary ms-2">${data.confidence}</span>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="text-center mb-3">
+                            <h4 class="text-primary">${data.best_single}</h4>
+                        </div>
+                        
+                        ${data.reason ? `
+                            <div class="alert alert-info">
+                                <h6><i class="fas fa-lightbulb me-2"></i>AI Analysis</h6>
+                                <p class="mb-0">${data.reason}</p>
+                            </div>
+                        ` : ''}
+                        
+                        ${data.suggestion ? `
+                            <div class="alert alert-secondary">
+                                <h6><i class="fas fa-info-circle me-2"></i>Suggestion</h6>
+                                <p class="mb-0">${data.suggestion}</p>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Load Today's Picks (lean GPT-powered parlays)
+        async function loadTodaysPicks() {
+            if (todaysPicksLoaded) return; // Only load once per session
+            
+            const container = document.getElementById('combos-pane');
+            if (!container) return;
+            
+            // Update UI to show Today's Picks interface
+            container.innerHTML = `
+                <div class="row">
+                    <div class="col-12">
+                        <div class="stats-card">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3><i class="fas fa-star"></i> Today's Picks</h3>
+                                <div class="d-flex gap-2">
+                                    <span class="badge bg-success">GPT-4 Powered</span>
+                                    <button class="btn btn-success btn-sm" id="refresh-todays-picks">
+                                        <i class="fas fa-sync-alt"></i> Refresh Picks
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-success mb-3">
+                                <h6><i class="fas fa-magic"></i> Lean Daily Recommendations</h6>
+                                <p class="mb-0">AI analyzes today's MLB props to generate 2 carefully selected parlays: one high-probability double and one risk-reward play with clear reasoning.</p>
+                            </div>
+                            
+                            <div id="todays-picks-container">
+                                <div class="loading">
+                                    <i class="fas fa-spinner fa-spin"></i> Generating today's picks...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add refresh button listener
+            document.getElementById('refresh-todays-picks').addEventListener('click', refreshTodaysPicks);
+            
+            // Load initial picks
+            await refreshTodaysPicks();
+            todaysPicksLoaded = true;
+        }
+        
+        // Refresh Today's Picks
+        async function refreshTodaysPicks() {
+            const container = document.getElementById('todays-picks-container');
+            if (!container) return;
+            
+            const button = document.getElementById('refresh-todays-picks');
+            const originalText = button ? button.innerHTML : '';
+            
+            if (button) {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+                button.disabled = true;
+            }
+            
+            try {
+                const response = await fetch('/todays_picks');
+                const data = await response.json();
+                
+                if (data.picks_analysis) {
+                    container.innerHTML = `
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-star me-2"></i>Today's Recommended Parlays
+                                    <span class="badge bg-light text-success ms-2">GPT-4 Analysis</span>
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info mb-3">
+                                    <small><i class="fas fa-info-circle me-1"></i>Analyzed ${data.props_analyzed} MLB props</small>
+                                </div>
+                                <div style="white-space: pre-line; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;">${data.picks_analysis}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.error) {
+                    container.innerHTML = `<div class="alert alert-warning">${data.error}</div>`;
+                } else {
+                    container.innerHTML = `<div class="alert alert-info">No picks available at this time.</div>`;
+                }
+                
+            } catch (error) {
+                console.error('Error loading Today\'s Picks:', error);
+                container.innerHTML = `<div class="alert alert-danger">Error loading picks: ${error.message}</div>`;
+            } finally {
+                if (button) {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }
+            }
+        }
+        
+        // Legacy Smart Combo function (deprecated)
+        async function refreshSmartCombo() {
+            if (!activeSmartComboMatchup) {
+                document.getElementById('smart-combo-result-container').innerHTML = 
+                    '<div class="alert alert-warning">Please select a matchup first.</div>';
+                return;
+            }
+            
+            const button = document.getElementById('refresh-smart-combo');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            button.disabled = true;
+            
+            try {
+                // Call AI suggestion result with matchup filtering
+                const url = activeSmartComboMatchup ? 
+                    `/ai_suggestion_result?matchup=${encodeURIComponent(activeSmartComboMatchup)}` : 
+                    `/ai_suggestion_result`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                // Update display with AI analysis result
+                if (data.combo_recommendations) {
+                    const container = document.getElementById('smart-combo-result-container');
+                    container.innerHTML = `
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-star me-2"></i>Today's Picks
+                                    <span class="badge bg-light text-primary ms-2">GPT-4 Powered</span>
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info mb-3">
+                                    <small><i class="fas fa-info-circle me-1"></i>Analyzed ${data.props_analyzed} player props</small>
+                                </div>
+                                <div style="white-space: pre-line;">${data.combo_recommendations}</div>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.error) {
+                    document.getElementById('smart-combo-result-container').innerHTML = 
+                        `<div class="alert alert-warning">${data.error}</div>`;
+                }
+                
+                // Update timestamp
+                const lastUpdated = new Date().toLocaleString();
+                document.getElementById('smart-combo-last-updated').textContent = lastUpdated;
+                
+            } catch (error) {
+                console.error('Error refreshing Smart Combo:', error);
+                document.getElementById('smart-combo-result-container').innerHTML = 
+                    `<div class="alert alert-danger">Error refreshing analysis: ${error.message}</div>`;
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            updatePlatformStatus();
+            loadMoneylines();
+            loadPlayerProps();
+            loadMatchups();
+            
+            // Add search and filter event listeners
+            if (document.getElementById('stat-filter')) {
+                document.getElementById('stat-filter').addEventListener('change', applyFilters);
+            }
+            if (document.getElementById('player-search')) {
+                document.getElementById('player-search').addEventListener('input', applyFilters);
+            }
+            if (document.getElementById('confidence-filter')) {
+                document.getElementById('confidence-filter').addEventListener('change', applyFilters);
+            }
+            if (document.getElementById('reset-filters')) {
+                document.getElementById('reset-filters').addEventListener('click', resetFilters);
+            }
+            
+            // Add tab change listener to load Today's Picks when tab is clicked
+            document.getElementById('combos-tab').addEventListener('click', function() {
+                // Load Today's Picks when tab is first clicked
+                setTimeout(() => {
+                    loadTodaysPicks();
+                }, 100);
+            });
+            
+            // Add refresh button listener for Today's Picks
+            if (document.getElementById('refresh-todays-picks')) {
+                document.getElementById('refresh-todays-picks').addEventListener('click', refreshTodaysPicks);
+            }
+            
+            // Refresh data every 5 minutes
+            setInterval(() => {
+                updatePlatformStatus();
+                loadMoneylines();
+                loadPlayerProps();
+                loadMatchups();
+            }, 300000);
+        });
+    </script>
+</body>
+</html>

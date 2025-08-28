@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MORA BETS Premium - Choose Your Plan</title>
+    
+    <!-- Meta Pixel Code -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1209944777515078'); 
+      fbq('track', 'PageView');
+    </script>
+    <noscript>
+      <img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=1209944777515078&ev=PageView&noscript=1"/>
+    </noscript>
+    <!-- End Meta Pixel Code -->
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'brand-navy': '#0d3b66',
+                        'brand-green': '#14532d',
+                        'brand-cta': '#17603e',
+                        'brand-gold': '#facc15',
+                        'brand-bg': '#f9fafb',
+                        'brand-text': '#1a1a1a'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-brand-bg text-brand-text min-h-screen">
+    <!-- Navigation Bar -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="container mx-auto px-4 py-4">
+            <div class="text-2xl font-bold text-brand-navy">MORA BETS</div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto px-4 py-8">
+        <!-- Error Message Display -->
+        <div id="errorMessage" class="hidden mb-6 bg-red-500 text-white px-4 py-3 rounded-lg text-center max-w-2xl mx-auto">
+        </div>
+        
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <h1 class="text-5xl font-bold mb-4 text-brand-navy">
+                Start Winning Smarter — In 3 Minutes or Less.
+            </h1>
+            <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                Real-time player prop edges based on sportsbook data and true probability filters
+            </p>
+        </div>
+
+        <!-- Pricing Cards -->
+        <div class="max-w-2xl mx-auto">
+            <!-- Billing Toggle -->
+            <div class="flex justify-center mb-8">
+                <div class="bg-white rounded-lg p-1 border border-gray-200 shadow-sm">
+                    <div class="flex">
+                        <button id="monthlyBtn" class="px-6 py-2 rounded-md text-sm font-medium transition-all duration-200 bg-brand-cta text-white">
+                            Monthly
+                        </button>
+                        <button id="yearlyBtn" class="px-6 py-2 rounded-md text-sm font-medium transition-all duration-200 text-gray-600 hover:text-brand-text">
+                            Yearly
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Single Pricing Card -->
+            <div class="bg-white rounded-2xl p-8 border-2 border-brand-cta hover:border-brand-cta transition-all duration-300 hover:shadow-2xl relative shadow-lg">
+                <!-- Popular badge -->
+                <div class="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                    <span class="bg-brand-cta text-white px-4 py-2 rounded-full text-sm font-bold">MOST POPULAR</span>
+                </div>
+                
+                <!-- Trial Badge (Monthly Only) -->
+                <div id="trialBadge" class="bg-brand-gold text-brand-text px-3 py-1 rounded-full text-sm font-bold mb-4 text-center">
+                    3-DAY TRIAL INCLUDED
+                </div>
+                
+                <!-- Savings Badge (Yearly Only) -->
+                <div id="savingsBadge" class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold mb-4 text-center hidden">
+                    SAVE 73% VS MONTHLY
+                </div>
+                
+                <div class="text-center">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-brand-cta rounded-full mb-6">
+                        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-2 text-brand-text">Mora Bets Tool</h3>
+                    
+                    <!-- Dynamic Pricing -->
+                    <div class="text-4xl font-bold mb-1 text-brand-text">
+                        $<span id="priceAmount">24.99</span>
+                    </div>
+                    <div class="text-gray-600 mb-6">
+                        per <span id="billingPeriod">month</span>
+                    </div>
+                    
+                    <div class="text-left mb-6">
+                        <p class="text-gray-600 leading-relaxed">
+                            Real-time player prop edges powered by sportsbook data and true probability filters. Built for serious bettors who trust the data — not guesses.<br><br>
+                            No fluff, no predictions — just data-driven betting insights updated live.
+                        </p>
+                    </div>
+                    
+                    <ul class="text-left space-y-3 mb-8 text-brand-text">
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-brand-cta mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                            </svg>
+                            MLB & NFL Live Props
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-brand-cta mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                            </svg>
+                            Real-Time Probability Data
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-brand-cta mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                            </svg>
+                            Sportsbook Edge Analysis
+                        </li>
+                        <li class="flex items-center">
+                            <svg class="w-5 h-5 text-brand-cta mr-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"></path>
+                            </svg>
+                            Cancel Anytime
+                        </li>
+                    </ul>
+                    
+                    <button id="subscribeBtn" class="w-full bg-brand-cta hover:bg-brand-green text-white font-bold py-3 px-6 rounded-md transition-colors duration-200 transform hover:scale-105">
+                        Start Trial
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bonus Copy -->
+        <div class="mt-12 text-center bg-white rounded-lg p-8 max-w-4xl mx-auto shadow-lg border border-gray-200">
+            <p class="text-xl text-brand-text">
+                <span id="bonusText">Try the Tool free for 3 days. Cancel anytime.</span> Get MLB & NFL prop insights with real probability data.
+            </p>
+        </div>
+
+        <!-- FAQ Section -->
+        <div class="mt-16 max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-8 text-brand-navy">Frequently Asked Questions</h2>
+            <div class="space-y-4">
+                <div class="bg-white rounded-lg shadow-lg border border-gray-200">
+                    <button class="w-full text-left p-6 focus:outline-none" onclick="toggleFAQ('faq1')">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-brand-text">What happens after I buy?</h3>
+                            <svg id="faq1-icon" class="w-5 h-5 transform transition-transform duration-200 text-brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div id="faq1" class="hidden px-6 pb-6">
+                        <p class="text-gray-600">You'll receive a license key immediately to access the Mora Bets Tool. The key will be sent to your email or displayed on your receipt page.</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-lg border border-gray-200">
+                    <button class="w-full text-left p-6 focus:outline-none" onclick="toggleFAQ('faq2')">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-brand-text">Can I cancel anytime?</h3>
+                            <svg id="faq2-icon" class="w-5 h-5 transform transition-transform duration-200 text-brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div id="faq2" class="hidden px-6 pb-6">
+                        <p class="text-gray-600">Yes, you can cancel anytime inside Stripe or by emailing support. Your 3-day trial gives you full access to test the platform risk-free.</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-lg border border-gray-200">
+                    <button class="w-full text-left p-6 focus:outline-none" onclick="toggleFAQ('faq3')">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-brand-text">What's the win rate?</h3>
+                            <svg id="faq3-icon" class="w-5 h-5 transform transition-transform duration-200 text-brand-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div id="faq3" class="hidden px-6 pb-6">
+                        <p class="text-gray-600">No pick is guaranteed, but we use real context to give you the smartest edge possible. Our platform shows probability data and edge calculations to help you make informed decisions.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="mt-16 text-center">
+            <h2 class="text-3xl font-bold mb-8 text-brand-navy">Why Choose Mora Bets?</h2>
+            <div class="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+                <div class="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
+                    <div class="text-4xl mb-4">📊</div>
+                    <h3 class="text-xl font-bold mb-2 text-brand-text">Real-Time Data</h3>
+                    <p class="text-gray-600">Live odds from top sportsbooks with market-driven probability calculations and instant updates</p>
+                </div>
+                <div class="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
+                    <div class="text-4xl mb-4">⚡</div>
+                    <h3 class="text-xl font-bold mb-2 text-brand-text">Smart Filtering</h3>
+                    <p class="text-gray-600">Advanced prop filtering with confidence levels and contextual hit rate analysis</p>
+                </div>
+                <div class="bg-white rounded-lg p-6 shadow-lg border border-gray-200">
+                    <div class="text-4xl mb-4">🎯</div>
+                    <h3 class="text-xl font-bold mb-2 text-brand-text">Proven Edge System</h3>
+                    <p class="text-gray-600">Mathematical probability models with edge calculations built for serious bettors</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- License Key Entry -->
+        <div class="mt-16 max-w-md mx-auto">
+            <div class="bg-white rounded-lg p-6 text-center shadow-lg border border-gray-200">
+                <h3 class="text-xl font-bold mb-4 text-brand-text">Already have a license key?</h3>
+                <form id="keyForm" class="space-y-4">
+                    <input type="text" id="licenseKey" placeholder="Enter your license key" 
+                           class="w-full px-4 py-2 bg-brand-bg border border-gray-300 rounded-md text-brand-text placeholder-gray-500 focus:outline-none focus:border-brand-cta">
+                    <button type="submit" class="w-full bg-brand-cta hover:bg-brand-green text-white font-bold py-2 px-4 rounded-md transition-colors">
+                        Access Dashboard
+                    </button>
+                </form>
+                <div id="keyError" class="text-red-500 text-sm mt-2 hidden"></div>
+            </div>
+        </div>
+
+        <!-- Reassurance Line -->
+        <div class="mt-12 text-center">
+            <p class="text-lg text-gray-600">
+                🔒 Secure checkout via Stripe • Trusted by 100+ sports bettors
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-16 text-center text-gray-500">
+            <p>&copy; 2025 Mora Bets. All rights reserved.</p>
+            <p class="mt-2">Secure payments powered by Stripe</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration variables
+        let config = {
+            priceMonthly: 'price_1RtyVnIzLEeC8QTzhOrtq2CO',
+            priceYearly: 'price_1RtyYYIzLEeC8QTzw8JsGH39',
+            trialDays: 3
+        };
+        
+        let currentPlan = 'monthly';
+        const monthlyAmount = 24.99;
+        const yearlyAmount = 79.99;
+
+        // Check for error message in URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const message = urlParams.get('message');
+        if (message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            // Clean up URL
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        // Load configuration from backend
+        async function loadConfig() {
+            try {
+                const response = await fetch('/config');
+                if (response.ok) {
+                    config = await response.json();
+                }
+            } catch (error) {
+                console.error('Failed to load config:', error);
+            }
+        }
+
+        // Update pricing display
+        function updatePricing(plan) {
+            currentPlan = plan;
+            const priceAmount = document.getElementById('priceAmount');
+            const billingPeriod = document.getElementById('billingPeriod');
+            const subscribeBtn = document.getElementById('subscribeBtn');
+            const trialBadge = document.getElementById('trialBadge');
+            const savingsBadge = document.getElementById('savingsBadge');
+            const monthlyBtn = document.getElementById('monthlyBtn');
+            const yearlyBtn = document.getElementById('yearlyBtn');
+
+            if (plan === 'monthly') {
+                priceAmount.textContent = monthlyAmount.toFixed(2);
+                billingPeriod.textContent = 'month';
+                subscribeBtn.textContent = 'Start Trial';
+                trialBadge.classList.remove('hidden');
+                savingsBadge.classList.add('hidden');
+                
+                // Update button styles
+                monthlyBtn.classList.add('bg-brand-cta', 'text-white');
+                monthlyBtn.classList.remove('text-gray-600', 'hover:text-brand-text');
+                yearlyBtn.classList.remove('bg-brand-cta', 'text-white');
+                yearlyBtn.classList.add('text-gray-600', 'hover:text-brand-text');
+            } else {
+                priceAmount.textContent = yearlyAmount.toFixed(2);
+                billingPeriod.textContent = 'year';
+                subscribeBtn.textContent = 'Subscribe';
+                trialBadge.classList.add('hidden');
+                savingsBadge.classList.remove('hidden');
+                
+                // Update button styles
+                yearlyBtn.classList.add('bg-brand-cta', 'text-white');
+                yearlyBtn.classList.remove('text-gray-600', 'hover:text-brand-text');
+                monthlyBtn.classList.remove('bg-brand-cta', 'text-white');
+                monthlyBtn.classList.add('text-gray-600', 'hover:text-brand-text');
+            }
+        }
+
+        // Handle subscription
+        async function handleSubscription() {
+            const priceId = currentPlan === 'monthly' ? config.priceMonthly : config.priceYearly;
+            
+            try {
+                const response = await fetch('/create-checkout-session', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        price_id: priceId
+                    })
+                });
+
+                const data = await response.json();
+                if (data.url) {
+                    window.location.href = data.url;
+                } else {
+                    console.error('No checkout URL returned');
+                }
+            } catch (error) {
+                console.error('Subscription error:', error);
+                alert('Failed to start subscription. Please try again.');
+            }
+        }
+
+        // Update bonus text based on plan
+        function updateBonusText(plan) {
+            const bonusText = document.getElementById('bonusText');
+            if (plan === 'monthly') {
+                bonusText.textContent = 'Try the Tool free for 3 days. Cancel anytime.';
+            } else {
+                bonusText.textContent = 'Get instant access with yearly billing. Cancel anytime.';
+            }
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', async function() {
+            await loadConfig();
+            
+            // Set up event listeners
+            document.getElementById('monthlyBtn').addEventListener('click', () => {
+                updatePricing('monthly');
+                updateBonusText('monthly');
+            });
+            document.getElementById('yearlyBtn').addEventListener('click', () => {
+                updatePricing('yearly');
+                updateBonusText('yearly');
+            });
+            document.getElementById('subscribeBtn').addEventListener('click', handleSubscription);
+            
+            // Initialize with monthly pricing
+            updatePricing('monthly');
+            updateBonusText('monthly');
+        });
+
+        // FAQ toggle functionality
+        function toggleFAQ(faqId) {
+            const faqContent = document.getElementById(faqId);
+            const faqIcon = document.getElementById(faqId + '-icon');
+            
+            if (faqContent.classList.contains('hidden')) {
+                faqContent.classList.remove('hidden');
+                faqIcon.style.transform = 'rotate(180deg)';
+            } else {
+                faqContent.classList.add('hidden');
+                faqIcon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // License key form functionality
+        document.getElementById('keyForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const key = document.getElementById('licenseKey').value.trim();
+            if (key) {
+                window.location.href = `/dashboard?key=${encodeURIComponent(key)}`;
+            }
+        });
+
+        // Key modal functionality removed - button no longer exists
+        
+        document.getElementById('submitKey').onclick = function () {
+            const key = document.getElementById('licenseKeyInput').value.trim();
+            if (key) {
+                window.location.href = `/dashboard?key=${encodeURIComponent(key)}`;
+            }
+        };
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('keyModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+
+    <!-- Key Entry Modal -->
+    <div id="keyModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" style="display: none;">
+        <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <h2 class="text-2xl font-bold mb-4 text-brand-text">Enter Your Access Key</h2>
+            <input type="text" id="licenseKeyInput" placeholder="Enter your key" 
+                   class="w-full px-4 py-2 border border-gray-300 rounded-md mb-4 focus:outline-none focus:border-brand-cta">
+            <div class="flex space-x-4">
+                <button id="submitKey" class="flex-1 bg-brand-cta hover:bg-brand-green text-white font-bold py-2 px-4 rounded-md transition-colors">
+                    Access Mora Bets
+                </button>
+                <button onclick="document.getElementById('keyModal').style.display='none'" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded-md transition-colors">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

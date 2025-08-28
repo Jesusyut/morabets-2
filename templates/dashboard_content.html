@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <!-- ✅ Charset & Viewport -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- ✅ Page Title -->
+    <title>Today's MLB Player Props & Parlays – Mora Bets</title>
+    
+    <!-- ✅ Meta Description -->
+    <meta name="description" content="Daily MLB player prop picks, optimized parlays, and expert insights. See today's top 2-leg picks powered by Mora Bets.">
+    
+    <!-- ✅ Open Graph Tags -->
+    <meta property="og:title" content="Mora Bets – Today's Best MLB Prop Picks">
+    <meta property="og:description" content="Expert-crafted 2-leg parlays and hit prop picks, updated daily.">
+    <meta property="og:url" content="https://morabets.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://morabets.com/assets/og-image.png">
+    
+    <!-- ✅ Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Mora Bets – MLB Prop Picks">
+    <meta name="twitter:description" content="Updated daily with the best 2-leg parlays and MLB player props.">
+    <meta name="twitter:image" content="https://morabets.com/assets/og-image.png">
+    
+    <!-- ✅ Canonical URL -->
+    <link rel="canonical" href="https://morabets.com/">
+    
+    <!-- ✅ Favicon -->
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .stats-card {
+            background: var(--bs-dark);
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .probability-high {
+            color: var(--bs-success);
+            font-weight: bold;
+        }
+        .probability-medium {
+            color: var(--bs-warning);
+        }
+        .probability-low {
+            color: var(--bs-danger);
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        .api-endpoint {
+            background: var(--bs-secondary);
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .edge-positive {
+            color: var(--bs-success);
+        }
+        .edge-negative {
+            color: var(--bs-danger);
+        }
+        .matchup-tab {
+            min-width: 140px;
+            white-space: nowrap;
+            transition: all 0.3s ease;
+        }
+        .matchup-tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .matchup-tab.active {
+            background-color: var(--bs-primary) !important;
+            color: white !important;
+            border-color: var(--bs-primary) !important;
+        }
+        .player-card {
+            transition: transform 0.2s ease;
+        }
+        .player-card:hover {
+            transform: translateY(-2px);
+        }
+        .prop-item {
+            transition: background-color 0.2s ease;
+        }
+        .prop-item:hover {
+            background-color: var(--bs-secondary);
+        }
+    </style>
+    
+    <!-- ✅ JSON-LD Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Mora Bets",
+        "url": "https://morabets.com/",
+        "description": "Mora Bets provides daily MLB prop bets and parlays using sharp betting analysis. Explore today's picks for hits, TB, HR, and more.",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Mora Bets"
+        }
+    }
+    </script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-chart-line"></i> Mora Bets
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#odds">Odds</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#props">Player Props</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#tools">Tools</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#api">API</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-12">
+                <div class="stats-card">
+                    <h1><i class="fas fa-chart-line"></i> Mora Bets</h1>
+                    <p class="text-muted">Advanced sports betting analytics with real-time odds and player prop insights</p>
+                    <div class="row mt-3">
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-clock text-primary me-2"></i>
+                                <span>Last Updated: <strong id="last-updated">Loading...</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-users text-info me-2"></i>
+                                <span>Active Matchups: <strong id="matchup-count">Loading...</strong></span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-sync-alt text-warning me-2"></i>
+                                <span>Live Odds: <strong id="sync-status">Synced</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabbed Navigation -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <ul class="nav nav-pills nav-justified" id="betting-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="moneylines-tab" data-bs-toggle="pill" data-bs-target="#moneylines-pane" type="button" role="tab">
+                            <i class="fas fa-percentage me-2"></i>Moneylines
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="props-tab" data-bs-toggle="pill" data-bs-target="#props-pane" type="button" role="tab">
+                            <i class="fas fa-baseball-ball me-2"></i>Player Props
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="combos-tab" data-bs-toggle="pill" data-bs-target="#combos-pane" type="button" role="tab">
+                            <i class="fas fa-star me-2"></i>Today's Picks
+                            <span class="badge bg-success ms-1">New</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="profit-tab" data-bs-toggle="pill" data-bs-target="#profit-pane" type="button" role="tab">
+                            <i class="fas fa-chart-line me-2"></i>How to Profit
+                        </button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content mt-4" id="betting-tab-content">

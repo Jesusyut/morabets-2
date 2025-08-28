@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Granted - Mora Bets</title>
+    
+    <!-- Meta Pixel Code -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1209944777515078'); 
+      fbq('track', 'PageView');
+      
+      // Track Purchase event for successful checkouts
+      {% if key and not mora_assist %}
+      fbq('track', 'Purchase', { value: 9.99, currency: 'USD' });
+      {% elif mora_assist %}
+      fbq('track', 'Purchase', { value: 28.99, currency: 'USD' });
+      {% endif %}
+    </script>
+    <noscript>
+      <img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=1209944777515078&ev=PageView&noscript=1"/>
+    </noscript>
+    <!-- End Meta Pixel Code -->
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white h-screen flex flex-col items-center justify-center">
+    <div class="text-center">
+        {% if mora_assist %}
+        <h1 class="text-3xl font-bold mb-4">✅ Mora Assist Purchase Confirmed</h1>
+        <p class="text-lg mb-2">Thank you for purchasing Mora Assist!</p>
+        <div class="bg-purple-800 p-4 rounded-md inline-block">
+            <p class="text-lg font-semibold text-purple-300">Daily Analysis Coming Soon</p>
+            <p class="text-sm text-gray-300 mt-2">Email: {{ email }}</p>
+            {% if phone != 'Not provided' %}
+            <p class="text-sm text-gray-300">Phone: {{ phone }}</p>
+            {% endif %}
+        </div>
+        <p class="text-sm text-gray-400 mt-4">You'll receive your custom analysis via email/SMS daily.</p>
+        <p class="text-xs text-gray-500 mt-2">This is not financial advice. Gambling involves risk.</p>
+        <a href="/" class="mt-6 inline-block bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-bold transition">Back to Home</a>
+        {% elif key %}
+        <h1 class="text-3xl font-bold mb-4">✅ Payment Confirmed</h1>
+        <p class="text-lg mb-2">Here's your license key:</p>
+        <div class="text-2xl font-mono font-semibold text-green-400 bg-gray-800 p-3 rounded-md inline-block">
+            {{ key }}
+        </div>
+        <p class="text-sm text-gray-400 mt-2">Save this somewhere safe.</p>
+        <a href="/" class="mt-6 inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold transition">Continue to Mora Bets</a>
+        {% elif error %}
+        <h1 class="text-3xl font-bold mb-4 text-red-500">❌ Verification Failed</h1>
+        <p class="text-lg mb-4 text-gray-300">{{ error }}</p>
+        <a href="/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold transition">Back to Home</a>
+        {% else %}
+        <h1 class="text-3xl font-bold mb-4">🔑 License Key Required</h1>
+        <p class="text-lg mb-4 text-gray-300">Please enter your license key to access Mora Bets Premium</p>
+        <a href="/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold transition">Back to Home</a>
+        {% endif %}
+    </div>
+</body>
+</html>
