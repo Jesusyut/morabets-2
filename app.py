@@ -17,8 +17,177 @@ from odds_api import fetch_player_props, parse_game_data, enrich_player_props
 from enrichment import load_props_from_file
 from probability import implied_probability, calculate_edge, kelly_bet_size, calculate_parlay_edge
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
+import build_props_novig
+from pairing import build_props_novig
 
 from team_abbreviations import get_team_abbreviation, format_matchup, TEAM_ABBREVIATIONS
+
+# --- ADD near top of app.py
+import os, requests
+from datetime import datetime, timedelta, timezone
+
+# Try to use your team abbreviations if present; otherwise fallback to full names
+try:
+    from team_abbreviations import TEAM_ABBR as _TEAM_ABBR
+    def _abbr(team):
+        return _TEAM_ABBR.get(team, team)
+except Exception:
+    def _abbr(team):  # fallback
+        return team
+
+SPORT_KEYS = {
+    "mlb": "baseball_mlb",
+    "nfl": "americanfootball_nfl",
+    "nba": "basketball_nba",
+    "nhl": "icehockey_nhl",
+}
+
+# Map Odds API market keys -> your internal 'stat' names
+MARKET_TO_STAT = {
+    # MLB (extend these as needed)
+    "player_hits": "batter_hits",
+    "player_home_runs": "batter_home_runs",
+    "player_total_bases": "batter_total_bases",
+    "pitcher_strikeouts": "pitcher_strikeouts",
+    "player_rbis": "rbis",
+    "player_runs": "runs",
+    # Example NFL/NBA/NHL mappings you can fill later
+    # "player_points": "points",
+    # "player_assists": "assists",
+    # "player_rebounds": "rebounds",
+    # "player_shots_on_goal": "shots_on_goal",
+}
+
+def _mk_matchup(away_team: str, home_team: str) -> str:
+    # Keep your existing convention AWAY@HOME, but abbreviate if mapping exists
+    return f"{_abbr(away_team)}@{_abbr(home_team)}"
+
+def fetch_player_prop_offers_flat(league: str = "mlb",
+                                  date_iso: str | None = None,
+                                  books: list[str] | None = None,
+                                  markets: list[str] | None = None) -> list[dict]:
+    """
+    Flat player-prop offers with explicit sides for no-vig pairing.
+
+    Returns a list of dicts shaped like:
+      {
+        "event_key": str,           # event id from Odds API
+        "matchup": "AWY@HOME",
+        "league": league,           # echo input
+        "player": "Name Surname",
+        "stat": "batter_hits",      # internal name via MARKET_TO_STAT
+        "line": 0.5,                # point
+        "side": "over"|"under",
+        "odds": -135,               # american int
+        "book": "draftkings"        # bookmaker key/slug
+      }
+    """
+    ODDS_API_KEY = os.getenv("ODDS_API_KEY")
+    if not ODDS_API_KEY:
+        raise RuntimeError("ODDS_API_KEY is not set")
+
+    sport_key = SPORT_KEYS.get(league.lower())
+    if not sport_key:
+        raise ValueError(f"Unsupported league: {league}")
+
+    # Default books and markets (tight list to avoid junk)
+    if not books:
+        # Slugs must match Odds API bookmaker keys
+        books = [b.strip() for b in os.getenv("BOOKS", "draftkings,fanduel,betmgm").split(",") if b.strip()]
+
+    if not markets:
+        # Only include markets that map cleanly to your internal stats
+        default_mlb = ["player_hits", "player_home_runs", "player_total_bases", "pitcher_strikeouts", "player_rbis", "player_runs"]
+        markets = default_mlb if league.lower() == "mlb" else list(MARKET_TO_STAT.keys())
+
+    # Time window: Odds API lets you just grab upcoming odds; we still allow a date anchor if you pass one
+    # If date_iso is None, no filter; otherwise prefer events on that date (UTC day)
+    # We'll still fetch a single page and filter locally by commence_time date match
+    params = {
+        "apiKey": ODDS_API_KEY,
+        "regions": "us",
+        "oddsFormat": "american",
+        "dateFormat": "iso",
+        "bookmakers": ",".join(books),
+        "markets": ",".join(markets),
+    }
+    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
+
+    resp = requests.get(url, params=params, timeout=20)
+    resp.raise_for_status()
+    events = resp.json() or []
+
+    wanted_date = None
+    if date_iso:
+        try:
+            wanted_date = datetime.fromisoformat(date_iso).date()
+        except Exception:
+            # Accept YYYY-MM-DD; be forgiving
+            try:
+                wanted_date = datetime.strptime(date_iso, "%Y-%m-%d").date()
+            except Exception:
+                wanted_date = None
+
+    out: list[dict] = []
+
+    for ev in events:
+        # Optional local date gate if requested
+        if wanted_date:
+            try:
+                ct = datetime.fromisoformat(ev.get("commence_time").replace("Z", "+00:00")).date()
+                if ct != wanted_date:
+                    continue
+            except Exception:
+                pass
+
+        event_id = ev.get("id") or f"{ev.get('away_team')}@{ev.get('home_team')}:{ev.get('commence_time')}"
+        away = ev.get("away_team") or ""
+        home = ev.get("home_team") or ""
+        matchup = _mk_matchup(away, home)
+
+        for bm in (ev.get("bookmakers") or []):
+            book_key = (bm.get("key") or bm.get("title") or "").lower().replace(" ", "_")
+            if book_key not in [b.lower() for b in books]:
+                continue
+
+            for mk in (bm.get("markets") or []):
+                market_key = mk.get("key") or mk.get("market_key") or ""
+                if market_key not in markets:
+                    continue
+
+                stat = MARKET_TO_STAT.get(market_key)
+                if not stat:
+                    continue
+
+                for oc in (mk.get("outcomes") or []):
+                    name = (oc.get("name") or "").lower()   # "over" or "under" expected
+                    if name not in ("over", "under"):
+                        continue
+                    price = oc.get("price")
+                    point = oc.get("point")
+                    # Player name often lives in 'description' for player props
+                    player = oc.get("description") or oc.get("participant") or oc.get("player") or ""
+                    if player == "" or point is None or price is None:
+                        continue
+                    try:
+                        odds_int = int(price)
+                        line_val = float(point)
+                    except Exception:
+                        continue
+
+                    out.append({
+                        "event_key": str(event_id),
+                        "matchup": matchup,
+                        "league": league.lower(),
+                        "player": player,
+                        "stat": stat,
+                        "line": line_val,
+                        "side": name,         # "over" / "under"
+                        "odds": odds_int,     # american odds
+                        "book": book_key,
+                    })
+
+    return out
 
 # NFL modules
 from nfl_odds_api import fetch_nfl_props
@@ -145,6 +314,10 @@ def check_redis_health():
 
 # Initialize Redis on startup
 init_redis()
+
+# No-Vig Mode Configuration
+USE_NOVIG_ONLY = os.getenv("ENABLE_ENRICHMENT", "false").lower() != "true"
+DEFAULT_BOOKS = [b.strip() for b in os.getenv("BOOKS", "draftkings,fanduel,betmgm").split(",") if b.strip()]
 
 # Cache helper functions with enhanced stability and timeouts
 def cache_set(key, value, timeout=3):
@@ -852,6 +1025,33 @@ def get_mlb_props():
 def get_props():
     """Get enriched props grouped by matchup with optional filtering (Underdog Fantasy style)"""
     try:
+        # Check if No-Vig Mode is enabled
+        if USE_NOVIG_ONLY:
+            league = (request.args.get("league") or "mlb").lower()
+            date_iso = request.args.get("date")  # optional "YYYY-MM-DD"
+            min_prob = float(request.args.get("min_prob", "0") or 0)
+            books_qs = request.args.get("books")
+            markets_qs = request.args.get("markets")
+
+            books = [b.strip().lower() for b in books_qs.split(",")] if books_qs else DEFAULT_BOOKS
+            markets = [m.strip() for m in markets_qs.split(",")] if markets_qs else None
+
+            raw_offers = fetch_player_prop_offers_flat(league=league, date_iso=date_iso, books=books, markets=markets)
+            grouped = build_props_novig(league, raw_offers, prefer_books=books)
+
+            # server-side probability filter to keep junk out of UI lists
+            if min_prob > 0:
+                for mu in list(grouped.keys()):
+                    grouped[mu] = [
+                        p for p in grouped[mu]
+                        if max(p["fair"]["prob"]["over"], p["fair"]["prob"]["under"]) >= min_prob
+                    ]
+                    if not grouped[mu]:
+                        del grouped[mu]
+
+            return jsonify(grouped), 200
+        
+        # Standard enrichment flow (existing code)
         from enrichment import load_props_from_file
         
         # Load props from file cache (no Redis dependency)
@@ -1529,6 +1729,8 @@ def fetch_events_odds(league: str, date_str: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching events odds for {league}: {e}")
         return []
+
+
 
 def fetch_player_props(league: str, date_str: str) -> List[Dict[str, Any]]:
     """Wrapper function to fetch player props for line shopping"""

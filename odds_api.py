@@ -11,28 +11,67 @@ from copy import deepcopy
 from typing import Dict, Any, List, Tuple, Optional
 from contextual import get_contextual_hit_rate
 from fantasy import get_fantasy_hit_rate
-from probability import (
-    american_to_implied,
-    fair_probs_from_two_sided,
-    fair_odds_from_prob,
-)
+from probability import american_to_implied, fair_probs_from_two_sided, fair_odds_from_prob
 
 logger = logging.getLogger(__name__)
 
 BASE = "https://api.the-odds-api.com"
 API_KEY = os.getenv("ODDS_API_KEY", "").strip()
 
-# bookmaker *keys* (lowercase). Override via ODDS_BOOKMAKERS env if needed.
+# Use bookmaker *keys* (lowercase). Override via ODDS_BOOKMAKERS if needed.
 PREFERRED_BOOKMAKER_KEYS: List[str] = [
     b.strip() for b in (os.getenv("ODDS_BOOKMAKERS") or
                         "fanduel,draftkings,betmgm,caesars,pointsbetus").split(",")
     if b.strip()
 ]
 
-DEBUG_PROB = os.getenv("DEBUG_PROB", "0") == "1"
-def _dbg(*args):
-    if DEBUG_PROB:
-        print("[FAIR]", *args)
+# ---------- pairing & normalization helpers (from working rebuild) ----------
+def _norm_point(val) -> Optional[str]:
+    """Normalize line so '0.5' pairs with '0.50' (3 dp string)."""
+    if val is None:
+        return None
+    try:
+        return f"{Decimal(str(val)).quantize(Decimal('0.001'))}"
+    except (InvalidOperation, ValueError, TypeError):
+        s = str(val).strip()
+        return s if s else None
+
+def _resolve_side_and_player(name: Optional[str], desc: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """Books flip name/description; always detect the side and player."""
+    n = (name or "").strip(); d = (desc or "").strip()
+    ln, ld = n.lower(), d.lower()
+    if ln in ("over","under"): return ln, d or n
+    if ld in ("over","under"): return ld, n or d
+    if "over" in ln:  return "over",  d or n
+    if "under" in ln: return "under", d or n
+    if "over" in ld:  return "over",  n or d
+    if "under" in ld: return "under", n or d
+    return None, None
+
+def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str):
+    """
+    Returns: (player, stat_key, point_key) -> {'over': {price, book}|None, 'under': {...}|None}
+    Prefer FanDuel when duplicates occur.
+    """
+    sidebook = defaultdict(lambda: {"over": None, "under": None})
+    for bk in bookmakers or []:
+        book_name = (bk.get("key") or bk.get("title") or "").strip().lower()
+        for m in bk.get("markets") or []:
+            if m.get("key") != stat_key:
+                continue
+            for o in m.get("outcomes") or []:
+                side, player = _resolve_side_and_player(o.get("name"), o.get("description"))
+                if side not in ("over","under") or not player:
+                    continue
+                price = o.get("price")
+                if price is None:
+                    continue
+                point = _norm_point(o.get("point"))
+                key = (player, stat_key, point)
+                keep = sidebook[key][side] is None or sidebook[key][side].get("book") != "fanduel"
+                if keep:
+                    sidebook[key][side] = {"price": int(price), "book": book_name}
+    return sidebook
 
 def _norm_point(val) -> Optional[str]:
     """Normalize prop line so '0.5' pairs with '0.50' (3 dp string)."""
@@ -85,9 +124,10 @@ def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tupl
 
 def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
     """
-    1) both sides -> no-vig probs
-    2) one side   -> implied from that side (other = 1-p)
-    3) fallback   -> implied from generic 'odds'
+    Compute final True Odds on the row:
+      - both sides -> no-vig fair probs
+      - one side   -> implied from that side (other = 1-p)
+      - fallback   -> implied from generic 'odds'
     """
     shop = row.get("shop") or {}
     over_am  = (shop.get("over")  or {}).get("american")
@@ -96,7 +136,6 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
 
     row.setdefault("fair", {})
     row["fair"].setdefault("prob", {"over": 0.0, "under": 0.0})
-    _dbg("row", row.get("player"), row.get("stat"), row.get("line"), "over=", over_am, "under=", under_am, "fb=", fallback)
 
     if over_am is not None and under_am is not None:
         p_over, p_under = fair_probs_from_two_sided(over_am, under_am)
@@ -131,10 +170,27 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
         row["fair"]["book"] = row.get("bookmaker") or ""
         return
 
+def _is_zero_prob(row: Dict[str, Any]) -> bool:
+    p = (row.get("fair") or {}).get("prob") or {}
+    return (p.get("over", 0.0) == 0.0) and (p.get("under", 0.0) == 0.0)
+
+def _ensure_shop_and_fallback(row: Dict[str, Any]) -> None:
+    """Guarantee at least one price present so _attach_fair_or_implied can work."""
+    if ("shop" not in row or not row["shop"]) and row.get("odds") is not None:
+        try:
+            row["shop"] = {"over": {"american": int(row["odds"]), "book": (row.get("bookmaker") or "")}}
+        except Exception:
+            pass
+
+def _finalize_fair(rows: List[Dict[str, Any]]) -> None:
+    """Final pass after enrichment: recompute any rows that ended up 0/0."""
+    for row in rows:
+        if _is_zero_prob(row):
+            _ensure_shop_and_fallback(row)
+            _attach_fair_or_implied(row)
+
 def _event_odds(event_id: str, markets: List[str]) -> Dict[str, Any]:
-    """
-    Try with bookmaker KEYS first, then fallback without the filter.
-    """
+    """Try with bookmaker KEYS first; if empty, retry without 'bookmakers'."""
     base_params = {
         "apiKey": API_KEY, "regions": "us", "oddsFormat": "american",
         "markets": ",".join(markets),
@@ -568,9 +624,8 @@ def fetch_player_props():
         props_for_matchup = []
 
         for (player, stat_key, point), sides in sidebook.items():
-            # sides = {"over": {...} or None, "under": {...} or None}
-            over  = sides.get("over")
-            under = sides.get("under")
+            # you already have sides = {'over': {...}|None, 'under': {...}|None}
+            over  = sides.get('over');  under = sides.get('under')
 
             row = {
                 "player": player,
@@ -578,24 +633,38 @@ def fetch_player_props():
                 "line":   point,
             }
 
-            # Populate shop (used for no-vig) when we have either side
+            # A) populate shop (for no-vig) + generic fallback fields
             if over or under:
-                row["shop"] = {}
-                if over:
-                    row["shop"]["over"] = {"american": int(over["price"]), "book": over["book"]}
-                if under:
-                    row["shop"]["under"] = {"american": int(under["price"]), "book": under["book"]}
+                row['shop'] = {}
+                if over:  row['shop']['over']  = {'american': int(over['price']),  'book': over['book']}
+                if under: row['shop']['under'] = {'american': int(under['price']), 'book': under['book']}
+            row['bookmaker'] = (over or under or {}).get('book')
+            row['odds']      = (over or under or {}).get('price')
+            
+            # Add side information for No-Vig Mode compatibility
+            if over and under:
+                row['side'] = 'both'  # Both sides available
+            elif over:
+                row['side'] = 'over'
+            elif under:
+                row['side'] = 'under'
+            else:
+                row['side'] = 'unknown'
+            
+            # Add book slug for consistency
+            row['book'] = (over or under or {}).get('book', '')
 
-            # Always provide a generic fallback price & book for implied calc
-            row["bookmaker"] = (over or under or {}).get("book")
-            row["odds"]      = (over or under or {}).get("price")
-
-            # compute probabilities FIRST (so we have something to protect)
+            # B) compute True Odds FIRST (so we have non-zero fair.prob)
             _attach_fair_or_implied(row)
+
+
 
             # Append to the list
             props_for_matchup.append(row)
 
+        # Finalize fair odds for this matchup
+        _finalize_fair(props_for_matchup)
+        
         # Add props to the flat list for backward compatibility
         all_props.extend(props_for_matchup)
         
@@ -768,11 +837,17 @@ def enrich_prop(prop):
                         def set_fair(pA, pB, sideA, sideB):
                             if pA is None: return
                             prop.setdefault("fair", {})
-                            prop["fair"]["prob"] = { sideA: round(pA,4), sideB: round(pB,4) }
-                            prop["fair"]["american"] = {
-                                sideA: fair_odds_from_prob(pA),
-                                sideB: fair_odds_from_prob(pB),
-                            }
+                            prop["fair"].setdefault("prob", {})
+                            prop["fair"]["prob"].setdefault(sideA, 0.0)
+                            prop["fair"]["prob"].setdefault(sideB, 0.0)
+                            # Only set if not already computed
+                            if not (prop["fair"]["prob"].get(sideA) or prop["fair"]["prob"].get(sideB)):
+                                prop["fair"]["prob"][sideA] = round(pA,4)
+                                prop["fair"]["prob"][sideB] = round(pB,4)
+                                prop["fair"]["american"] = {
+                                    sideA: fair_odds_from_prob(pA),
+                                    sideB: fair_odds_from_prob(pB),
+                                }
 
                         # Totals (Over/Under)
                         if over_price is not None and under_price is not None:
