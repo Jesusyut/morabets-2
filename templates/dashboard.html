@@ -393,7 +393,7 @@
                                            placeholder="Search players or stats..." 
                                            onkeyup="applyFilters()">
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4" style="display:none">
                                     <select id="confidence-filter" class="form-select" onchange="applyFilters()">
                                         <option value="">All Confidence Levels</option>
                                         <option value="high">High Confidence (≥70%)</option>
@@ -417,6 +417,26 @@
                                     <span class="visually-hidden">Loading props...</span>
                                 </div>
                                 <p class="mt-3">Loading player props...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Top Props Container -->
+                    <div class="row mt-4">
+                        <div class="col-12">
+                            <div class="d-flex justify-content-center mb-4">
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-outline-primary tab" data-league="mlb">MLB</button>
+                                    <button class="btn btn-outline-primary tab" data-league="nfl">NFL</button>
+                                    <button class="btn btn-outline-primary tab" data-league="nba">NBA</button>
+                                    <button class="btn btn-outline-primary tab" data-league="nhl">NHL</button>
+                                </div>
+                            </div>
+                            
+                            <div id="top-props" class="row"></div>
+                            
+                            <div class="text-center mt-4">
+                                <button id="load-more" class="btn btn-primary">Load More Props</button>
                             </div>
                         </div>
                     </div>
@@ -1712,6 +1732,74 @@
 
     </script>
 
+    <!-- Top Props JavaScript -->
+    <script>
+    (function(){
+      let league = 'mlb';
+      let limit = 50, offset = 0;
+      const container = document.getElementById('top-props');
+      const loadBtn = document.getElementById('load-more');
+
+      function cardHTML(p){
+        const over = Math.round(p.fair.prob.over * 100);
+        const under = Math.round(p.fair.prob.under * 100);
+        const l10 = p.meta && p.meta.l10 ? `L10: ${p.meta.l10.over_hits}/${p.meta.l10.games} (${Math.round(p.meta.l10.rate_over*100)}%)` : '';
+        const src = (p.meta && p.meta.source) ? p.meta.source.toUpperCase() : (p.fair.book || p.shop || '');
+        return `
+          <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card bg-dark border-secondary h-100">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                  <small class="text-muted">${p.matchup}</small>
+                  <span class="badge bg-secondary">${p.stat} ${p.line}</span>
+                </div>
+                <h6 class="card-title mb-2">${p.player}</h6>
+                <div class="text-success mb-1">Over ${over}%</div>
+                <div class="text-warning small mb-2">Under ${under}%</div>
+                ${l10 ? `<div class="text-info small mb-2">${l10}</div>` : ''}
+                <div class="text-muted small">Source: ${src}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      async function fetchPage(){
+        loadBtn.disabled = true;
+        try{
+          const res = await fetch(`/player_props/top?league=${league}&limit=${limit}&offset=${offset}&over_only=1&min_prob=0.50&include_l10=1`);
+          const data = await res.json();
+          const items = data.items || [];
+          if (offset === 0) container.innerHTML = '';
+          items.forEach(p => container.insertAdjacentHTML('beforeend', cardHTML(p)));
+          offset += items.length;
+          if (offset >= (data.total || 0) || items.length === 0) {
+            loadBtn.style.display = 'none';
+          } else {
+            loadBtn.style.display = 'inline-block';
+          }
+        } catch (e) {
+          console.error('Top props load failed', e);
+        } finally {
+          loadBtn.disabled = false;
+        }
+      }
+
+      // League tabs
+      document.querySelectorAll('.tab').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          league = btn.dataset.league;
+          offset = 0;
+          fetchPage();
+        });
+      });
+
+      loadBtn.addEventListener('click', fetchPage);
+
+      // initial load
+      fetchPage();
+    })();
+    </script>
 
     
     <script>
