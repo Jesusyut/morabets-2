@@ -9,7 +9,12 @@ import hashlib
 from datetime import datetime, timedelta, date
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, make_response
 from flask_cors import CORS
-from flask_compress import Compress
+# compression (optional)
+try:
+    from flask_compress import Compress
+    _HAS_COMPRESS = True
+except Exception:  # module missing or import failure
+    _HAS_COMPRESS = False
 from redis import Redis
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -214,7 +219,16 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "mora-bets-secret-key-change-in-production")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 CORS(app)
-Compress(app)  # Enable gzip/brotli compression
+
+# Enable gzip/brotli if available (and not disabled by env)
+if _HAS_COMPRESS and os.getenv("ENABLE_COMPRESSION", "1") == "1":
+    try:
+        Compress(app)
+        app.logger.info("Compression enabled via Flask-Compress")
+    except Exception as e:
+        app.logger.warning(f"Compression init failed: {e}")
+else:
+    app.logger.info("Compression disabled (missing lib or ENABLE_COMPRESSION=0)")
 
 # --- Boot logging with git info ---
 def _git_info():
