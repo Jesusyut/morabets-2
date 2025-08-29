@@ -20,6 +20,16 @@
     .under{color:var(--amber)}
     .search{width:100%;max-width:420px;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--stroke);color:var(--text)}
     .toolbar{display:flex;gap:8px;align-items:center;margin:10px 0 18px}
+    .tiny-link{display:inline-flex;align-items:center;gap:6px;color:#9dd0ff;font-size:12px;cursor:pointer;text-decoration:none;border-bottom:1px dashed #2b3245}
+    .tiny-link:hover{color:#cfe6ff}
+    /* modal */
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px}
+    .modal.open{display:flex}
+    .modal-card{background:#0e1422;border:1px solid var(--stroke);border-radius:14px;max-width:520px;width:100%;padding:16px}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .close{background:transparent;color:var(--muted);border:1px solid var(--stroke);padding:6px 10px;border-radius:8px;cursor:pointer}
+    .kpi{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+    .kpi div{background:#131a2a;border:1px solid #2b3245;border-radius:10px;padding:6px 10px;font-size:12px}
   </style>
 </head>
 <body>
@@ -36,6 +46,21 @@
     <div id="props" class="grid"></div>
   </div>
 
+  <!-- trend modal -->
+  <div id="trendModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="trendTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div id="trendTitle" style="font-weight:700"></div>
+          <div id="trendSub" class="muted" style="font-size:12px"></div>
+        </div>
+        <button class="close" onclick="trendClose()">Close</button>
+      </div>
+      <div id="trendBody" class="muted">Loading…</div>
+      <div class="kpi" id="trendKPI" style="display:none"></div>
+    </div>
+  </div>
+
 <script>
 (async function(){
   const grid = document.getElementById('props');
@@ -47,7 +72,6 @@
   const esc = (s)=> (s??'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
   const today = new Date().toISOString().slice(0,10);
 
-  // fallback to odds → implied probability if fair.prob.over missing
   function americanToProb(odds){
     if(odds==null) return 0;
     const o = Number(odds);
@@ -55,18 +79,13 @@
     return o>0 ? 100/(o+100) : (-o)/(100-o);
   }
 
-  // Flatten response regardless of shape:
-  // - case A: object { "<matchup>": [props...] }
-  // - case B: array [props...]
   function flatten(data){
     if(Array.isArray(data)) return data;
     if(data && typeof data==='object'){
       const out = [];
       for(const [matchup, arr] of Object.entries(data)){
         if(!Array.isArray(arr)) continue;
-        for(const p of arr){
-          out.push({...p, matchup});
-        }
+        for(const p of arr){ out.push({...p, matchup}); }
       }
       return out;
     }
@@ -74,10 +93,16 @@
   }
 
   function scoreOver(p){
-    // Prefer fair over-prob, else compute from offered odds (if 'odds' represents Over)
     const fairOver = p?.fair?.prob?.over ?? 0;
-    if(fairOver && fairOver>0) return fairOver;
-    return americanToProb(p?.odds);
+    return fairOver>0 ? fairOver : americanToProb(p?.odds);
+  }
+
+  function trendLinkHTML(p){
+    // Always present like in legacy: "Show last 10 games trend"
+    return `<a class="tiny-link" onclick="showTrend(${encodeObj({player:p.player, stat:p.stat, line:p.line})})">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 6 12 13 7 10 2 13"></polyline><polyline points="22 10 12 17 7 14 2 17"></polyline></svg>
+              Show last 10 games trend
+            </a>`;
   }
 
   function renderCard(p){
@@ -92,6 +117,7 @@
           <div class="pill">${esc(stat)} ${esc(p.line)}</div>
         </div>
         <div style="margin-top:8px;font-weight:700">${esc(p.player || '')}</div>
+        <div style="margin-top:8px">${trendLinkHTML(p)}</div>
         <div style="margin-top:10px">
           <div class="over">Over ${over}%</div>
           <div class="under">Under ${under}%</div>
@@ -102,7 +128,6 @@
   }
 
   async function fetchProps(){
-    // Try with date param first (most backends expect it), fallback to without.
     const urls = [
       `/player_props?league=mlb&date=${today}`,
       `/player_props?league=mlb`
@@ -118,7 +143,18 @@
     return [];
   }
 
-  function applySearch(){
+  // --- load/sort/render ---
+  const all = await fetchProps();
+  all.sort((a,b)=> scoreOver(b) - scoreOver(a));
+  const data = all; // show all props
+  countEl.textContent = data.length.toLocaleString();
+
+  grid.innerHTML = data.length
+    ? data.map(renderCard).join('')
+    : `<div class="card"><div class="muted">No props found.</div></div>`;
+
+  // search
+  q.addEventListener('input', ()=>{
     const term=(q.value||'').trim().toLowerCase();
     for(const el of grid.children){
       if(!term){ el.style.display=''; continue; }
@@ -126,28 +162,77 @@
       const stat=el.getAttribute('data-stat')||'';
       el.style.display=(name.includes(term)||stat.includes(term))?'':'none';
     }
+  });
+
+  // ---- Trend modal plumbing (global funcs) ----
+  window.trendClose = function(){
+    document.getElementById('trendModal').classList.remove('open');
+  };
+
+  window.showTrend = async function(payload){
+    const {player, stat, line} = payload || {};
+    const modal = document.getElementById('trendModal');
+    const title = document.getElementById('trendTitle');
+    const sub = document.getElementById('trendSub');
+    const body = document.getElementById('trendBody');
+    const kpi = document.getElementById('trendKPI');
+
+    title.textContent = player || '';
+    sub.textContent = `${stat ?? ''} ${line ?? ''}`;
+    body.textContent = 'Loading…';
+    kpi.style.display = 'none';
+    kpi.innerHTML = '';
+    modal.classList.add('open');
+
+    // Hit your contextual endpoint (tries several common shapes)
+    const qs = new URLSearchParams({
+      player_name: player || '',
+      stat_type: stat || '',
+      threshold: (line ?? 1).toString()
+    });
+
+    const tryUrls = [
+      `/contextual/hit_rate?${qs.toString()}`,
+      `/contextual/hit-rate?${qs.toString()}`,
+      `/contextual?${qs.toString()}`,
+      `/contextual?player=${encodeURIComponent(player||'')}&stat_type=${encodeURIComponent(stat||'')}&threshold=${encodeURIComponent(line??1)}`
+    ];
+
+    let resp = null;
+    for(const u of tryUrls){
+      try{
+        const r = await fetch(u);
+        if(r.ok){
+          resp = await r.json();
+          break;
+        }
+      }catch(e){/* keep trying */}
+    }
+
+    if(!resp){
+      body.textContent = 'Could not load last 10 games. Try again later.';
+      return;
+    }
+
+    // Expecting { hit_rate, sample_size, confidence, ... }
+    // (Matches your get_contextual_hit_rate return)
+    const rate = Number(resp.hit_rate ?? 0);
+    const size = Number(resp.sample_size ?? 10);
+    const conf = resp.confidence || '';
+
+    body.innerHTML = `Over in <b>${Math.round(rate*size)}</b> of last <b>${size}</b> games (${Math.round(rate*100)}%)`;
+    kpi.style.display = 'flex';
+    kpi.innerHTML = `
+      <div>Confidence: <b>${esc(conf)}</b></div>
+      <div>Threshold: <b>${esc((resp.threshold ?? line ?? 1).toString())}</b></div>
+      ${resp.pitcher_hand ? `<div>Pitcher hand: <b>${esc(resp.pitcher_hand)}</b></div>`:''}
+    `;
+  };
+
+  // small utility to inline-encode object for onclick
+  function encodeObj(o){
+    return JSON.stringify(o).replace(/</g,'\\u003c');
   }
-
-  // --- load/sort/render ---
-  const all = await fetchProps();
-
-  // sort by highest OVER probability (fair if present; else implied from odds)
-  all.sort((a,b)=> scoreOver(b) - scoreOver(a));
-
-  // OPTIONAL: if you want only Hits & Total Bases, uncomment below
-  // const keep = new Set(['hits','batter_hits','total_bases','batter_total_bases']);
-  // const data = all.filter(p => keep.has(String(p.stat).toLowerCase()));
-
-  const data = all; // showing ALL props as requested
-  countEl.textContent = data.length.toLocaleString();
-
-  if(!data.length){
-    grid.innerHTML = `<div class="card"><div class="muted">No props found.</div></div>`;
-  }else{
-    grid.innerHTML = data.map(renderCard).join('');
-  }
-
-  q.addEventListener('input', applySearch);
 })();
 </script>
 </body>

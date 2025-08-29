@@ -1310,6 +1310,16 @@ def labels_endpoint():
     return jsonify(labels), 200
 
 
+@app.route("/contextual/hit_rate")
+def contextual_hit_rate():
+    player = request.args.get("player_name") or request.args.get("player")
+    stat   = request.args.get("stat_type") or request.args.get("stat")
+    th     = float(request.args.get("threshold", 1))
+    if not (player and stat):
+        return jsonify({"error":"missing player_name/stat_type"}), 400
+    return jsonify(get_contextual_hit_rate(player, stat, th))
+
+
 @app.route("/analytics")
 def analytics():
     """Analytics endpoint with hit counting"""
