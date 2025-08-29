@@ -13,6 +13,8 @@ ALLOWED_MARKETS = {
         "batter_home_runs": (0.5, 1.5),
         "batter_total_bases": (0.5, 3.5),
         "pitcher_strikeouts": (1.5, 12.5),
+        "rbis": (0.5, 2.5),
+        "runs": (0.5, 2.5),
     }
 }
 
@@ -22,6 +24,9 @@ def _market_ok(league: str, stat: str, line: float) -> bool:
     try:
         f = float(line)
     except Exception:
+        return False
+    # hard filter: TB over 1.5 is "useless"—skip anything with line > 1.5
+    if stat == "batter_total_bases" and f > 1.5:
         return False
     return rng[0] <= f <= rng[1]
 
@@ -176,8 +181,11 @@ def build_props_novig(
         if best:
             out[mu].append(best)
 
-    # sort each matchup list by priority_score desc, then by prob.over desc
+    # sort each matchup list by highest probability (no 70% logic)
     for mu in out:
-        out[mu].sort(key=lambda p: (p.get("priority_score", 0.0), p["fair"]["prob"]["over"]), reverse=True)
+        out[mu].sort(
+            key=lambda p: max(p["fair"]["prob"]["over"], p["fair"]["prob"]["under"]),
+            reverse=True
+        )
 
     return out

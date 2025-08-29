@@ -18,6 +18,7 @@ from enrichment import load_props_from_file
 from probability import implied_probability, calculate_edge, kelly_bet_size, calculate_parlay_edge
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
+from trends_l10 import annotate_props_with_l10  # NEW
 
 from team_abbreviations import get_team_abbreviation, format_matchup, TEAM_ABBREVIATIONS
 
@@ -1058,6 +1059,17 @@ def get_props():
             )
             total_props = sum(len(props) for props in grouped.values())
             logger.info(f"[NOVIG] Built {total_props} props from {len(raw_offers)} offers across {len(grouped)} matchups")
+
+            # optional L10 annotate—doesn't break response if fails
+            include_l10 = (request.args.get("include_l10", os.getenv("ENABLE_L10","false")).lower() in ("1","true","yes","on"))
+            l10_lookback = int(request.args.get("l10_lookback", os.getenv("L10_LOOKBACK","10")))
+            
+            if include_l10:
+                try:
+                    grouped = annotate_props_with_l10(grouped, league=league, lookback=l10_lookback)
+                    logger.info(f"[L10] Annotated {total_props} props with L10 trends")
+                except Exception as e:
+                    logger.warning(f"[L10] annotate failed: {e}")
 
             # server-side probability filter to keep junk out of UI lists
             if min_prob > 0:

@@ -640,3 +640,7 @@ def _attach_player_ids_if_needed(props: list[dict], league: str) -> list[dict]:
                 p["player_id"] = pid
     return props
 
+# --- Legacy L10 stub to prevent crashes ---
+def legacy_l10_trend(*args, **kwargs):
+    raise RuntimeError("legacy_l10_trend is deprecated; use trends_l10.compute_l10()")
+
