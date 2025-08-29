@@ -12,6 +12,11 @@
     .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
     h1{margin:0;font-size:22px}
     .muted{color:var(--muted)}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+    .tab{background:transparent;color:var(--muted);border:1px solid var(--stroke);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .tab.active{color:var(--text);border-color:#7c6dff;box-shadow:0 0 0 1px #7c6dff inset}
+    .search{width:100%;max-width:420px;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--stroke);color:var(--text)}
+    .toolbar{display:flex;gap:8px;align-items:center;margin:10px 0 18px}
     .grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:14px}
     @media(min-width:900px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
     .card{background:var(--card);border:1px solid var(--stroke);border-radius:14px;padding:14px}
@@ -19,25 +24,40 @@
     .pill{font-size:12px;border:1px solid var(--stroke);padding:3px 8px;border-radius:999px;color:#cbd3ee}
     .over{color:var(--green);font-weight:600}
     .under{color:var(--amber)}
-    .search{width:100%;max-width:420px;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--stroke);color:var(--text)}
-    .toolbar{display:flex;gap:8px;align-items:center;margin:10px 0 18px}
     .tiny-link{display:inline-flex;align-items:center;gap:6px;color:#9dd0ff;font-size:12px;cursor:pointer;text-decoration:none;border-bottom:1px dashed #2b3245}
     .tiny-link:hover{color:#cfe6ff}
-    /* modal */
-    .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px}
-    .modal.open{display:flex}
-    .modal-card{background:#0e1422;border:1px solid var(--stroke);border-radius:14px;max-width:520px;width:100%;padding:16px}
-    .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-    .close{background:transparent;color:var(--muted);border:1px solid var(--stroke);padding:6px 10px;border-radius:8px;cursor:pointer}
-    .kpi{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
-    .kpi div{background:#131a2a;border:1px solid #2b3245;border-radius:10px;padding:6px 10px;font-size:12px}
+
+    /* big loading overlay */
+    .loading{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(10,14,24,.85);backdrop-filter:saturate(140%) blur(2px);
+      z-index:10;flex-direction:column;text-align:center;padding:24px
+    }
+    .spinner{width:44px;height:44px;border:3px solid #2b3245;border-top-color:#9dd0ff;border-radius:50%;animation:spin 0.9s linear infinite;margin-bottom:12px}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div style="font-weight:700">Loading 1,000+ props…</div>
+    <div class="muted" style="margin-top:6px">This can take a few seconds on first load.</div>
+  </div>
+
   <div class="wrap">
     <div class="top">
       <h1>Mora Bets</h1>
       <div class="muted"><span id="count">–</span> props</div>
+    </div>
+
+    <!-- League tabs -->
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-league="mlb">MLB</button>
+      <button class="tab" data-league="nfl">NFL</button>
+      <button class="tab" data-league="nba">NBA</button>
+      <button class="tab" data-league="nhl">NHL</button>
+      <button class="tab" data-league="ufc">UFC</button>
+      <button class="tab" data-league="ncaa">NCAA</button>
     </div>
 
     <div class="toolbar">
@@ -48,17 +68,19 @@
   </div>
 
   <!-- trend modal -->
-  <div id="trendModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="trendTitle">
-    <div class="modal-card">
-      <div class="modal-header">
+  <div id="trendModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="trendTitle" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px">
+    <div class="modal-card" style="background:#0e1422;border:1px solid #2b3245;border-radius:14px;max-width:520px;width:100%;padding:16px">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
           <div id="trendTitle" style="font-weight:700"></div>
           <div id="trendSub" class="muted" style="font-size:12px"></div>
         </div>
-        <button class="close" onclick="trendClose()">Close</button>
+        <button class="close" onclick="trendClose()" style="background:transparent;color:#9aa4bf;border:1px solid #2b3245;padding:6px 10px;border-radius:8px;cursor:pointer">Close</button>
       </div>
       <div id="trendBody" class="muted">Loading…</div>
-      <div class="kpi" id="trendKPI" style="display:none"></div>
+      <div class="kpi" id="trendKPI" style="display:none;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <!-- KPIs injected -->
+      </div>
     </div>
   </div>
 
@@ -67,43 +89,35 @@
   const grid = document.getElementById('props');
   const countEl = document.getElementById('count');
   const q = document.getElementById('q');
+  const tabs = document.getElementById('tabs');
+  const loader = document.getElementById('loading');
 
-  // --- helpers ---
-  const pct = (x)=> Math.round((Number(x)||0)*100);
-  const esc = (s)=> (s??'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
+  let league = 'mlb';
   const today = new Date().toISOString().slice(0,10);
 
-  function americanToProb(odds){
-    if(odds==null) return 0;
-    const o = Number(odds);
-    if(!isFinite(o) || o===0) return 0;
-    return o>0 ? 100/(o+100) : (-o)/(100-o);
-  }
+  const esc = (s)=> (s??'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
+  const pct = (x)=> Math.round((Number(x)||0)*100);
+  function americanToProb(odds){ if(odds==null) return 0; const o=Number(odds); if(!isFinite(o)||o===0) return 0; return o>0?100/(o+100):(-o)/(100-o); }
 
   function flatten(data){
     if(Array.isArray(data)) return data;
     if(data && typeof data==='object'){
-      const out = [];
-      for(const [matchup, arr] of Object.entries(data)){
-        if(!Array.isArray(arr)) continue;
-        for(const p of arr){ out.push({...p, matchup}); }
-      }
+      const out=[]; for(const [k, arr] of Object.entries(data)){ if(Array.isArray(arr)) for(const p of arr){ out.push({...p, matchup:k}); } }
       return out;
     }
     return [];
   }
 
   function scoreOver(p){
-    const fairOver = p?.fair?.prob?.over ?? 0;
-    return fairOver>0 ? fairOver : americanToProb(p?.odds);
+    const fair = p?.fair?.prob?.over ?? 0;
+    return (fair && fair>0) ? fair : americanToProb(p?.odds);
   }
 
   function trendLinkHTML(p){
-    // Always present like in legacy: "Show last 10 games trend"
-    return `<a class="tiny-link" onclick="showTrend(${encodeObj({player:p.player, stat:p.stat, line:p.line})})">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 6 12 13 7 10 2 13"></polyline><polyline points="22 10 12 17 7 14 2 17"></polyline></svg>
-              Show last 10 games trend
-            </a>`;
+    return `<a class="tiny-link" onclick="showTrend(${encodeURIComponent(JSON.stringify({player:p.player, stat:p.stat, line:p.line}))})">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 6 12 13 7 10 2 13"></polyline><polyline points="22 10 12 17 7 14 2 17"></polyline></svg>
+      Show last 10 games trend
+    </a>`;
   }
 
   function renderCard(p){
@@ -128,42 +142,41 @@
     `;
   }
 
-  async function fetchProps(){
-    const today = new Date().toISOString().slice(0,10);
-    const res = await fetch(`/player_props/top?league=mlb&date=${today}&limit=500`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.items || [];
+  async function fetchAllProps(){
+    // Try with date param first, then without.
+    const urls = [
+      `/player_props?league=${league}&date=${today}`,
+      `/player_props?league=${league}`
+    ];
+    for(const url of urls){
+      try{
+        const res = await fetch(url, {cache:"no-store"});
+        if(!res.ok) continue;
+        const json = await res.json();
+        return flatten(json);
+      }catch(e){}
+    }
+    return [];
   }
 
-  // --- load/sort/render ---
-  const all = await fetchProps();
-  // No need to sort - server already sorted by over probability
-  const data = all; // show all props
-  countEl.textContent = data.length.toLocaleString();
+  async function loadLeague(newLeague){
+    league = newLeague || league;
+    // activate tab
+    Array.from(tabs.querySelectorAll('.tab')).forEach(b=> b.classList.toggle('active', b.dataset.league===league));
+    loader.style.display = 'flex';
+    grid.innerHTML = '';
+    countEl.textContent = '–';
 
-  if(!data.length){
-    grid.innerHTML = `<div class="card"><div class="muted">No props found.</div></div>`;
-  }else{
-    // Batch render to avoid blocking paint
-    renderInBatches(data, grid, 120);
+    const all = await fetchAllProps();
+    // highest OVER first
+    all.sort((a,b)=> scoreOver(b) - scoreOver(a));
+
+    countEl.textContent = all.length.toLocaleString();
+    grid.innerHTML = all.length ? all.map(renderCard).join('') : `<div class="card"><div class="muted">No props found.</div></div>`;
+    loader.style.display = 'none';
   }
 
-  function renderInBatches(list, container, batch=100){
-    let i = 0;
-    (function step(){
-      const frag = document.createDocumentFragment();
-      for(let c=0; c<batch && i<list.length; c++, i++){
-        const div = document.createElement('div');
-        div.innerHTML = renderCard(list[i]);
-        frag.appendChild(div.firstElementChild);
-      }
-      container.appendChild(frag);
-      if(i < list.length) requestAnimationFrame(step);
-    })();
-  }
-
-  // search
+  // search filter
   q.addEventListener('input', ()=>{
     const term=(q.value||'').trim().toLowerCase();
     for(const el of grid.children){
@@ -174,12 +187,19 @@
     }
   });
 
-  // ---- Trend modal plumbing (global funcs) ----
-  window.trendClose = function(){
-    document.getElementById('trendModal').classList.remove('open');
-  };
+  // tabs
+  tabs.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.tab'); if(!btn) return;
+    if(btn.dataset.league === league) return;
+    loadLeague(btn.dataset.league);
+  });
 
-  window.showTrend = async function(payload){
+  // ---- Trend modal plumbing ----
+  window.trendClose = function(){
+    document.getElementById('trendModal').style.display = 'none';
+  };
+  window.showTrend = async function(encoded){
+    const payload = JSON.parse(decodeURIComponent(encoded));
     const {player, stat, line} = payload || {};
     const modal = document.getElementById('trendModal');
     const title = document.getElementById('trendTitle');
@@ -192,40 +212,24 @@
     body.textContent = 'Loading…';
     kpi.style.display = 'none';
     kpi.innerHTML = '';
-    modal.classList.add('open');
+    modal.style.display = 'flex';
 
-    // Hit your contextual endpoint (tries several common shapes)
     const qs = new URLSearchParams({
       player_name: player || '',
       stat_type: stat || '',
       threshold: (line ?? 1).toString()
     });
-
     const tryUrls = [
       `/contextual/hit_rate?${qs.toString()}`,
       `/contextual/hit-rate?${qs.toString()}`,
-      `/contextual?${qs.toString()}`,
-      `/contextual?player=${encodeURIComponent(player||'')}&stat_type=${encodeURIComponent(stat||'')}&threshold=${encodeURIComponent(line??1)}`
+      `/contextual?${qs.toString()}`
     ];
-
     let resp = null;
     for(const u of tryUrls){
-      try{
-        const r = await fetch(u);
-        if(r.ok){
-          resp = await r.json();
-          break;
-        }
-      }catch(e){/* keep trying */}
+      try{ const r = await fetch(u); if(r.ok){ resp = await r.json(); break; } }catch(e){}
     }
+    if(!resp){ body.textContent='Could not load last 10 games.'; return; }
 
-    if(!resp){
-      body.textContent = 'Could not load last 10 games. Try again later.';
-      return;
-    }
-
-    // Expecting { hit_rate, sample_size, confidence, ... }
-    // (Matches your get_contextual_hit_rate return)
     const rate = Number(resp.hit_rate ?? 0);
     const size = Number(resp.sample_size ?? 10);
     const conf = resp.confidence || '';
@@ -239,10 +243,8 @@
     `;
   };
 
-  // small utility to inline-encode object for onclick
-  function encodeObj(o){
-    return JSON.stringify(o).replace(/</g,'\\u003c');
-  }
+  // initial load
+  loadLeague('mlb');
 })();
 </script>
 </body>

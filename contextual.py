@@ -1,10 +1,71 @@
+import os, math, time
 import requests
-from datetime import datetime
+from datetime import datetime, date
 import logging
-import json
-import os
 
 logger = logging.getLogger(__name__)
+
+SESSION = requests.Session()
+SESSION.headers.update({"User-Agent":"MoraBets/1.0"})
+TIMEOUT = float(os.getenv("MLB_TIMEOUT", "4"))
+
+def _http_get(url, params=None, timeout=TIMEOUT):
+    # simple retry
+    for i in range(3):
+        try:
+            r = SESSION.get(url, params=params, timeout=timeout)
+            if r.ok: return r
+        except Exception:
+            if i == 2: raise
+            time.sleep(0.25 * (i+1))
+    raise RuntimeError("MLB request failed")
+
+def _resolve_player_id(name:str)->int:
+    # MLB people search
+    r = _http_get("https://statsapi.mlb.com/api/v1/people/search", params={"names": name})
+    data = r.json() or {}
+    people = data.get("people") or []
+    if not people:
+        raise ValueError(f"player not found: {name}")
+    return int(people[0]["id"])
+
+def _game_logs(pid:int, group:str="hitting", season:int=None)->list:
+    if season is None:
+        season = date.today().year
+    # gameLog for season
+    params = {
+        "stats": "gameLog",
+        "group": group,
+        "season": season
+    }
+    r = _http_get(f"https://statsapi.mlb.com/api/v1/people/{pid}/stats", params=params)
+    js = r.json() or {}
+    splits = (((js.get("stats") or [])[0] or {}).get("splits") or [])
+    # Normalize each split to dict with date + stat map
+    out=[]
+    for s in splits:
+        d = (s.get("date") or s.get("gameDate") or "")
+        st = (s.get("stat") or {})
+        out.append({"date": d, "stat": st})
+    # Sort newest first
+    out.sort(key=lambda x: x["date"], reverse=True)
+    return out
+
+def _map_stat_value(stat_type:str, stat_obj:dict)->float:
+    s = (stat_type or "").lower()
+    if s in ("hits","batter_hits"):   return float(stat_obj.get("hits", 0))
+    if s in ("total_bases","batter_total_bases","tb"): return float(stat_obj.get("totalBases", 0))
+    # fallback: 0 so it won't count as over
+    return float(stat_obj.get(s, 0) or 0)
+
+def _confidence_label(rate:float, n:int)->str:
+    # quick binomial std err check vs 0.5 baseline
+    if n < 6: return "low"
+    se = math.sqrt(max(rate*(1-rate), 1e-9)/max(n,1))
+    z = abs(rate - 0.5) / max(se, 1e-9)
+    if n >= 8 and z >= 1.5: return "high"
+    if z >= 0.8: return "medium"
+    return "low"
 
 # Enhanced Enrichment: Pitcher Split Matchups
 def get_pitcher_splits_multiplier(pitcher_id, batter_handedness):
@@ -174,92 +235,43 @@ def get_fallback_hit_rate(player_name, stat_type, threshold):
         "note": "Fallback calculation based on MLB averages"
     }
 
-def get_contextual_hit_rate(player_name, stat_type, threshold=1):
-    """Get contextual hit rate for a player with comprehensive fallback support"""
-    try:
-        mlb_stat_key = STAT_KEY_MAP.get(stat_type)
-        if not mlb_stat_key:
-            # For unknown stat types, still provide fallback
-            return get_fallback_hit_rate(player_name, stat_type, threshold)
+def get_contextual_hit_rate(player_name:str, stat_type:str, threshold:float):
+    """
+    Returns a dict like:
+    {
+      "hit_rate": 0.7,
+      "sample_size": 10,
+      "confidence": "high",
+      "threshold": 1.5
+    }
+    """
+    pid = _resolve_player_id(player_name)
 
-        player_id = get_player_id(player_name)
-        if not player_id:
-            return get_fallback_hit_rate(player_name, stat_type, threshold)
+    logs = []
+    # Pull current season first; if <10 games, also pull last season
+    yr = date.today().year
+    logs.extend(_game_logs(pid, group="hitting", season=yr))
+    if len(logs) < 10:
+        logs.extend(_game_logs(pid, group="hitting", season=yr-1))
 
-        context = get_opponent_context(player_id)
-        if not context:
-            return get_fallback_hit_rate(player_name, stat_type, threshold)
+    # take last 10 appearances with stat values
+    filtered=[]
+    for g in logs:
+        v = _map_stat_value(stat_type, g["stat"])
+        filtered.append(v)
+        if len(filtered) >= 10: break
 
-        team_id, opponent_id, pitcher_hand = context
+    n = len(filtered)
+    if n == 0:
+        return {"hit_rate": 0.0, "sample_size": 0, "confidence": "low", "threshold": float(threshold)}
 
-        # Determine group type based on stat type
-        group_type = "pitching" if stat_type.startswith("pitcher_") else "hitting"
-        
-        # Get game logs
-        logs_resp = requests.get(
-            f"{MLB_STATS_API}/people/{player_id}/stats",
-            params={
-                "stats": "gameLog",
-                "season": "2025",
-                "group": group_type
-            },
-            timeout=10
-        )
-        logs_resp.raise_for_status()
-        logs_data = logs_resp.json()
-        
-        logs = logs_data.get("stats", [{}])[0].get("splits", [])
-        
-        # Get recent games (last 10 games regardless of opponent for better sample size)
-        recent = logs[:10] if logs else []
+    overs = sum(1 for v in filtered if v >= float(threshold))
+    rate = overs / n
+    conf = _confidence_label(rate, n)
 
-        if len(recent) < 2:
-            return get_fallback_hit_rate(player_name, stat_type, threshold)
-
-        # Count games where player exceeded threshold
-        over_count = 0
-        for game in recent:
-            game_stat = game.get("stat", {})
-            
-            # Handle special composite stats
-            if mlb_stat_key == "combinedStats":
-                # H+R+RBI calculation
-                stat_value = (game_stat.get("hits", 0) + 
-                            game_stat.get("runs", 0) + 
-                            game_stat.get("rbi", 0))
-            elif mlb_stat_key == "fantasyPoints":
-                # Basic fantasy scoring
-                hits = game_stat.get("hits", 0)
-                doubles = game_stat.get("doubles", 0)
-                triples = game_stat.get("triples", 0)
-                hrs = game_stat.get("homeRuns", 0)
-                singles = max(0, hits - doubles - triples - hrs)
-                
-                stat_value = (singles * 1 + doubles * 2 + triples * 3 + hrs * 4 + 
-                            game_stat.get("rbi", 0) + game_stat.get("runs", 0) + 
-                            game_stat.get("stolenBases", 0) * 2)
-            else:
-                stat_value = game_stat.get(mlb_stat_key, 0)
-            
-            if stat_value >= threshold:
-                over_count += 1
-        
-        hit_rate = round(over_count / len(recent), 2) if recent else 0.0
-        confidence = "High" if hit_rate >= 0.6 else "Medium" if hit_rate >= 0.4 else "Low"
-
-        return {
-            "player": player_name,
-            "stat": mlb_stat_key,
-            "threshold": threshold,
-            "hit_rate": hit_rate,
-            "sample_size": len(recent),
-            "confidence": confidence,
-            "pitcher_hand": pitcher_hand,
-            "opponent_id": opponent_id
-        }
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error fetching contextual hit rate for {player_name}: {e}")
-        return get_fallback_hit_rate(player_name, stat_type, threshold)
-    except Exception as e:
-        logger.error(f"Unexpected error in contextual hit rate for {player_name}: {e}")
-        return get_fallback_hit_rate(player_name, stat_type, threshold)
+    return {
+        "hit_rate": round(rate, 4),
+        "sample_size": n,
+        "confidence": conf,
+        "threshold": float(threshold)
+    }
