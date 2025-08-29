@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Mora Bets</title>
+  <link rel="preconnect" href="https://www.morabets.com">
   <style>
     :root{--bg:#0f1420;--card:#161b28;--stroke:#2b3245;--text:#e6e9f2;--muted:#9aa4bf;--green:#2dd36f;--amber:#f9d65a;}
     html,body{background:var(--bg);color:var(--text);margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
@@ -128,30 +129,39 @@
   }
 
   async function fetchProps(){
-    const urls = [
-      `/player_props?league=mlb&date=${today}`,
-      `/player_props?league=mlb`
-    ];
-    for(const url of urls){
-      try{
-        const res = await fetch(url);
-        if(!res.ok) continue;
-        const json = await res.json();
-        return flatten(json);
-      }catch(e){ /* try next */ }
-    }
-    return [];
+    const today = new Date().toISOString().slice(0,10);
+    const res = await fetch(`/player_props/top?league=mlb&date=${today}&limit=500`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.items || [];
   }
 
   // --- load/sort/render ---
   const all = await fetchProps();
-  all.sort((a,b)=> scoreOver(b) - scoreOver(a));
+  // No need to sort - server already sorted by over probability
   const data = all; // show all props
   countEl.textContent = data.length.toLocaleString();
 
-  grid.innerHTML = data.length
-    ? data.map(renderCard).join('')
-    : `<div class="card"><div class="muted">No props found.</div></div>`;
+  if(!data.length){
+    grid.innerHTML = `<div class="card"><div class="muted">No props found.</div></div>`;
+  }else{
+    // Batch render to avoid blocking paint
+    renderInBatches(data, grid, 120);
+  }
+
+  function renderInBatches(list, container, batch=100){
+    let i = 0;
+    (function step(){
+      const frag = document.createDocumentFragment();
+      for(let c=0; c<batch && i<list.length; c++, i++){
+        const div = document.createElement('div');
+        div.innerHTML = renderCard(list[i]);
+        frag.appendChild(div.firstElementChild);
+      }
+      container.appendChild(frag);
+      if(i < list.length) requestAnimationFrame(step);
+    })();
+  }
 
   // search
   q.addEventListener('input', ()=>{

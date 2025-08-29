@@ -5,9 +5,11 @@ import time
 import requests
 import stripe
 import uuid
-from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session
+import hashlib
+from datetime import datetime, timedelta, date
+from flask import Flask, request, jsonify, render_template, redirect, url_for, session, make_response
 from flask_cors import CORS
+from flask_compress import Compress
 from redis import Redis
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -212,6 +214,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "mora-bets-secret-key-change-in-production")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 CORS(app)
+Compress(app)  # Enable gzip/brotli compression
 
 # --- Boot logging with git info ---
 def _git_info():
@@ -1315,9 +1318,152 @@ def contextual_hit_rate():
     player = request.args.get("player_name") or request.args.get("player")
     stat   = request.args.get("stat_type") or request.args.get("stat")
     th     = float(request.args.get("threshold", 1))
+    
     if not (player and stat):
         return jsonify({"error":"missing player_name/stat_type"}), 400
-    return jsonify(get_contextual_hit_rate(player, stat, th))
+
+    # Cache key for the day
+    today = date.today().isoformat()
+    key = f"ctx:{today}:{player}:{stat}:{th}"
+    
+    # Try to get from cache
+    if redis and redis_healthy:
+        try:
+            cached = redis.get(key)
+            if cached:
+                return jsonify(json.loads(cached))
+        except Exception as e:
+            logger.warning(f"Redis get failed for contextual: {e}")
+
+    # Cache miss - compute fresh data
+    try:
+        data = get_contextual_hit_rate(player, stat, th)
+        
+        # Cache for 12 hours
+        if redis and redis_healthy:
+            try:
+                redis.setex(key, 12*3600, json.dumps(data))
+            except Exception as e:
+                logger.warning(f"Redis set failed for contextual: {e}")
+        
+        return jsonify(data)
+    except Exception as e:
+        logger.error(f"Error computing contextual hit rate: {e}")
+        return jsonify({"error": "Failed to compute trend data"}), 500
+
+
+def warm_top_props():
+    """Warm the cache on startup or periodically"""
+    try:
+        for lg in ["mlb"]:
+            for d in [date.today().isoformat()]:
+                try:
+                    with app.test_request_context(f"/player_props/top?league={lg}&date={d}&limit=1"):
+                        player_props_top()
+                        logger.info(f"✅ Warmed cache for {lg} {d}")
+                except Exception as e:
+                    logger.warning(f"Failed to warm cache for {lg} {d}: {e}")
+    except Exception as e:
+        logger.error(f"Cache warming failed: {e}")
+
+
+# --- Performance optimization functions ---
+def american_to_prob(odds):
+    if odds is None: return 0.0
+    o = float(odds)
+    return 100.0/(o+100.0) if o > 0 else (-o)/(100.0 - o)
+
+def flatten_props(data):
+    if isinstance(data, list): return data
+    out=[]
+    if isinstance(data, dict):
+        for k, arr in data.items():
+            if isinstance(arr, list):
+                for p in arr:
+                    p = dict(p)
+                    p.setdefault("matchup", k)
+                    out.append(p)
+    return out
+
+def build_top_payload(raw):
+    items=[]
+    for p in flatten_props(raw):
+        fair = (p.get("fair") or {}).get("prob") or {}
+        over = fair.get("over")
+        if not over:  # fallback to implied prob when enrichment missing
+            over = american_to_prob(p.get("odds"))
+        under = fair.get("under") or (1 - (over or 0))
+        items.append({
+            "player": p.get("player"),
+            "stat": p.get("stat"),
+            "line": p.get("line"),
+            "matchup": p.get("matchup"),
+            "over": over or 0.0,
+            "under": under or 0.0,
+            "source": (p.get("fair") or {}).get("book") or p.get("shop") or ""
+        })
+    items.sort(key=lambda x: x["over"], reverse=True)
+    return {"total": len(items), "items": items}
+
+@app.route("/player_props/top")
+def player_props_top():
+    league = request.args.get("league","mlb")
+    d      = request.args.get("date") or date.today().isoformat()
+    limit  = int(request.args.get("limit","120"))
+    offset = int(request.args.get("offset","0"))
+
+    cache_key = f"pp:top:{league}:{d}"
+    
+    # Try to get from Redis cache
+    if redis and redis_healthy:
+        try:
+            blob = redis.get(cache_key)
+            if blob:
+                # HTTP caching hints
+                etag = hashlib.md5(blob).hexdigest()
+                resp = make_response(blob)
+                resp.headers["Content-Type"] = "application/json"
+                resp.headers["Cache-Control"] = "public, max-age=15, stale-while-revalidate=60"
+                resp.headers["ETag"] = etag
+                return resp
+        except Exception as e:
+            logger.warning(f"Redis get failed: {e}")
+
+    # Cache miss - build fresh data
+    try:
+        # Get raw props using existing function
+        raw = fetch_player_prop_offers_flat(league=league, date_iso=d, books=["draftkings", "fanduel", "betmgm"])
+        grouped = build_props_novig(
+            league, raw,
+            prefer_books=["draftkings", "fanduel", "betmgm"],
+            allow_crossbook=True,
+            allow_single_side_fallback=True,
+            default_overround=0.04,
+            prefer_side="over",
+            high_threshold=0.70
+        )
+        
+        payload = build_top_payload(grouped)
+        blob = json.dumps(payload, separators=(",",":")).encode("utf-8")
+        
+        # Cache in Redis with 30s TTL
+        if redis and redis_healthy:
+            try:
+                redis.setex(cache_key, 30, blob)
+            except Exception as e:
+                logger.warning(f"Redis set failed: {e}")
+        
+        # HTTP caching hints
+        etag = hashlib.md5(blob).hexdigest()
+        resp = make_response(blob)
+        resp.headers["Content-Type"] = "application/json"
+        resp.headers["Cache-Control"] = "public, max-age=15, stale-while-revalidate=60"
+        resp.headers["ETag"] = etag
+        return resp
+        
+    except Exception as e:
+        logger.error(f"Error building top props: {e}")
+        return jsonify({"error": "Failed to load props", "total": 0, "items": []}), 500
 
 
 @app.route("/analytics")
@@ -2423,6 +2569,10 @@ def _rebuild_ev_cache():
 from threading import Thread
 init_thread = Thread(target=background_initializer, daemon=True)
 init_thread.start()
+
+# Warm cache on startup
+warm_thread = Thread(target=warm_top_props, daemon=True)
+warm_thread.start()
 
 # Flask app startup
 if __name__ == "__main__":
