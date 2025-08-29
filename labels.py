@@ -1,50 +1,31 @@
 # labels.py
 import requests
-from collections import defaultdict
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 import os
-from novig import american_to_prob, novig_two_way
+from novig import novig_two_way
 
-SPORT_KEYS = {
-    "mlb": "baseball_mlb",
-    "nfl": "americanfootball_nfl",
-    "nba": "basketball_nba",
-    "nhl": "icehockey_nhl",
-}
+SPORT_KEYS = {"mlb":"baseball_mlb","nfl":"americanfootball_nfl","nba":"basketball_nba","nhl":"icehockey_nhl"}
 
-# Threshold to tag "high scoring" in MLB; you can tune or make it percentile-based.
-MLB_HIGH_TOTAL_THRESHOLD = 9.0
+def _abbr(team: str):
+    try:
+        from team_abbreviations import TEAM_ABBR
+        return TEAM_ABBR.get(team, team)
+    except Exception:
+        return team
 
-def _abbr(team, TEAM_ABBR=None):
-    if TEAM_ABBR and team in TEAM_ABBR:
-        return TEAM_ABBR[team]
-    return team
+def mk_matchup(away_team: str, home_team: str) -> str:
+    a = (_abbr(away_team) or "").strip().replace(" ", "")
+    h = (_abbr(home_team) or "").strip().replace(" ", "")
+    return f"{a}@{h}"
 
-def fetch_matchup_labels(league: str = "mlb",
-                         date_iso: Optional[str] = None,
-                         books: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
-    """
-    Returns per-matchup labels using featured markets (h2h + totals), de-vigged:
-      {
-        "AWAY@HOME": {
-          "favored": {"team":"HOME", "prob":0.61, "book":"draftkings"},
-          "total":   {"line": 9.0,  "prob_over":0.53, "book":"fanduel"},
-          "high_scoring": true
-        },
-        ...
-      }
-    """
+def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
     ODDS_API_KEY = os.getenv("ODDS_API_KEY")
-    if not ODDS_API_KEY:
-        return {}
+    if not ODDS_API_KEY: return out
+    sport = SPORT_KEYS.get(league.lower())
+    if not sport: return out
 
-    books = [b.lower() for b in (books or ["draftkings", "fanduel", "betmgm"])]
-    sport_key = SPORT_KEYS.get(league.lower())
-    if not sport_key:
-        return {}
-
-    # One call for featured markets is allowed here
-    url = f"https://api.the-odds-api.com/v4/sports/{sport_key}/odds"
+    url = f"https://api.the-odds-api.com/v4/sports/{sport}/odds"
     params = {
         "apiKey": ODDS_API_KEY,
         "regions": "us",
@@ -53,86 +34,60 @@ def fetch_matchup_labels(league: str = "mlb",
         "bookmakers": ",".join(books),
         "markets": "h2h,totals"
     }
-    if date_iso:
-        # Not strictly required; Odds API returns upcoming — date filter optional
-        params["dateFormat"] = "iso"
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
 
-    try:
-        resp = requests.get(url, params=params, timeout=20)
-        resp.raise_for_status()
-    except Exception:
-        return {}
-
-    try:
-        from team_abbreviations import TEAM_ABBREVIATIONS as TEAM_ABBR
-    except Exception:
-        TEAM_ABBR = None
-
-    out: Dict[str, Dict[str, Any]] = {}
-
-    for ev in resp.json() or []:
+    for ev in r.json() or []:
         away = ev.get("away_team") or ""
         home = ev.get("home_team") or ""
-        matchup = f"{_abbr(away, TEAM_ABBR)}@{_abbr(home, TEAM_ABBR)}"
-        best_fav = None  # (prob, team, book)
-        best_tot = None  # (line, prob_over, book)
-        # choose best by strongest edge from 0.5
-        best_fav_score = 0.0
-        best_tot_score = 0.0
+        matchup = mk_matchup(away, home)
+
+        fav_team = fav_prob = fav_book = None
+        tot_line = prob_over = tot_book = None
 
         for bm in (ev.get("bookmakers") or []):
             book = (bm.get("key") or bm.get("title") or "").lower().replace(" ", "_")
-
-            # Moneyline
             for mk in (bm.get("markets") or []):
-                if mk.get("key") == "h2h":
-                    # two outcomes (teams). Map odds:
-                    prices: Dict[str, Optional[int]] = {}
-                    for oc in (mk.get("outcomes") or []):
-                        name = (oc.get("name") or "").strip()
-                        price = oc.get("price")
-                        if not name or price is None:
-                            continue
-                        prices[name] = int(price)
-                    # Need odds for both teams
-                    if away in prices and home in prices:
-                        p_away, p_home = novig_two_way(prices[away], prices[home])
-                        fav_team, fav_prob = (away, p_away) if p_away >= p_home else (home, p_home)
-                        score = abs(fav_prob - 0.5)
-                        if fav_prob is not None and score > best_fav_score:
-                            best_fav_score = score
-                            best_fav = (float(fav_prob), fav_team, book)
+                k = mk.get("key")
+                oc = mk.get("outcomes") or []
+                if k == "h2h" and len(oc) >= 2:
+                    price_home = price_away = None
+                    for o in oc:
+                        nm = (o.get("name") or "")
+                        if nm == home: price_home = int(o.get("price"))
+                        if nm == away: price_away = int(o.get("price"))
+                    if price_home is not None and price_away is not None:
+                        p_home, p_away = novig_two_way(price_home, price_away)
+                        if p_home is not None:
+                            if p_home >= p_away:
+                                if fav_prob is None or p_home > fav_prob:
+                                    fav_team, fav_prob, fav_book = _abbr(home), p_home, book
+                            else:
+                                if fav_prob is None or p_away > fav_prob:
+                                    fav_team, fav_prob, fav_book = _abbr(away), p_away, book
+                if k == "totals" and len(oc) >= 2:
+                    over = under = None; line = None
+                    for o in oc:
+                        nm = (o.get("name") or "").lower()
+                        if o.get("point") is not None:
+                            line = float(o["point"])
+                        if nm == "over":  over  = int(o.get("price"))
+                        if nm == "under": under = int(o.get("price"))
+                    if over is not None and under is not None and line is not None:
+                        p_over, p_under = novig_two_way(over, under)
+                        if p_over is not None:
+                            # choose strongest signal
+                            if (prob_over is None) or (abs(p_over-0.5) > abs(prob_over-0.5)):
+                                tot_line, prob_over, tot_book = line, p_over, book
 
-                # Totals
-                if mk.get("key") == "totals":
-                    # There can be multiple totals entries; outcomes carry "Over"/"Under" and point
-                    over_price = under_price = None
-                    line = mk.get("outcomes")[0].get("point") if mk.get("outcomes") else None
-                    for oc in (mk.get("outcomes") or []):
-                        name = (oc.get("name") or "").lower()
-                        price = oc.get("price")
-                        point = oc.get("point")
-                        if point is not None:
-                            line = point
-                        if name == "over":
-                            over_price = price
-                        elif name == "under":
-                            under_price = price
-                    if over_price is not None and under_price is not None and line is not None:
-                        p_over, p_under = novig_two_way(int(over_price), int(under_price))
-                        score = abs(p_over - 0.5)
-                        if p_over is not None and score > best_tot_score:
-                            best_tot_score = score
-                            best_tot = (float(line), float(p_over), book)
-
-        if best_fav or best_tot:
-            entry: Dict[str, Any] = {}
-            if best_fav:
-                entry["favored"] = {"team": best_fav[1], "prob": best_fav[0], "book": best_fav[2]}
-            if best_tot:
-                entry["total"] = {"line": best_tot[0], "prob_over": best_tot[1], "book": best_tot[2]}
-                # static threshold; optional: compute percentile across all lines instead
-                entry["high_scoring"] = bool(best_tot[0] >= MLB_HIGH_TOTAL_THRESHOLD)
-            out[matchup] = entry
-
+        if fav_team or tot_line is not None:
+            out[matchup] = {
+                "favored_team": fav_team,
+                "favored_prob": fav_prob,
+                "favored_book": fav_book,
+                "total_line": tot_line,
+                "prob_over_total": prob_over,
+                "total_book": tot_book,
+                "high_scoring": bool(tot_line is not None and tot_line >= 9.0),
+            }
     return out

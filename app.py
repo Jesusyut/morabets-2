@@ -72,10 +72,17 @@ def _date_range_utc(date_iso: str | None):
     except Exception:
         return None, None
 
-def _abbr(team, TEAM_ABBR=None):
-    if TEAM_ABBR and team in TEAM_ABBR:
-        return TEAM_ABBR[team]
-    return team
+def _abbr(team: str):
+    try:
+        from team_abbreviations import TEAM_ABBR
+        return TEAM_ABBR.get(team, team)
+    except Exception:
+        return team
+
+def mk_matchup(away_team: str, home_team: str) -> str:
+    a = (_abbr(away_team) or "").strip().replace(" ", "")
+    h = (_abbr(home_team) or "").strip().replace(" ", "")
+    return f"{a}@{h}"
 
 def fetch_player_prop_offers_flat(league: str = "mlb",
                                   date_iso: str | None = None,
@@ -131,7 +138,7 @@ def fetch_player_prop_offers_flat(league: str = "mlb",
             continue
         away = e.get("away_team") or ""
         home = e.get("home_team") or ""
-        matchup = f"{_abbr(away, TEAM_ABBR)}@{_abbr(home, TEAM_ABBR)}"
+        matchup = mk_matchup(away, home)
 
         eo_params = {
             "apiKey": ODDS_API_KEY,
@@ -1045,6 +1052,9 @@ def get_props():
             high_threshold = float(request.args.get("high_threshold", "0.70") or 0.70)
             prefer = (request.args.get("prefer", "over").lower() in ("over","any")) and request.args.get("prefer","over").lower() or "over"
             
+            # parse knobs from query
+            over_only = (request.args.get("over_only","1").lower() in ("1","true","yes","on"))  # default ON
+            
             # Get default overround from environment variable
             default_overround = float(os.getenv("NOVIG_DEFAULT_OVERROUND", "0.04"))
             
@@ -1093,6 +1103,13 @@ def get_props():
                     if not grouped[mu]:
                         del grouped[mu]
 
+            # enforce over_only at the route level too (so it's guaranteed)
+            if over_only:
+                for mu in list(grouped.keys()):
+                    grouped[mu] = [p for p in grouped[mu] if p["fair"]["prob"]["over"] >= float(request.args.get("min_prob","0.0"))]
+                    if not grouped[mu]: del grouped[mu]
+
+            # final: they are already sorted by OVER desc inside pairing.py
             return jsonify(grouped), 200
         
         # Standard enrichment flow (existing code)
@@ -1302,7 +1319,7 @@ def get_nfl_props():
         # Simple transformation for now (can enhance later)
         enhanced_props = []
         for event in raw_props:
-            matchup = f"{event['away_team']} @ {event['home_team']}"
+            matchup = mk_matchup(event['away_team'], event['home_team'])
             
             for bookmaker in event.get('bookmakers', []):
                 for market in bookmaker.get('markets', []):
@@ -1372,16 +1389,21 @@ def matchups():
             from labels import fetch_matchup_labels
             
             league = (request.args.get("league") or "mlb").lower()
-            date_iso = request.args.get("date")
             books_qs = request.args.get("books")
-            books = [b.strip().lower() for b in books_qs.split(",")] if books_qs else None
+            books = [b.strip().lower() for b in books_qs.split(",")] if books_qs else ["draftkings", "fanduel", "betmgm"]
 
-            labels = fetch_matchup_labels(league=league, date_iso=date_iso, books=books)
+            labels = fetch_matchup_labels(league=league, books=books)
             
             # Attach labels to existing matchups without breaking shape
             for mu, info in labels.items():
                 if mu in matchups:
+                    # flat keys (safe for existing UI) + namespaced copy
                     matchups[mu]["labels"] = info
+                    matchups[mu]["favored_team"]    = info.get("favored_team")
+                    matchups[mu]["favored_prob"]    = info.get("favored_prob")
+                    matchups[mu]["total_line"]      = info.get("total_line")
+                    matchups[mu]["prob_over_total"] = info.get("prob_over_total")
+                    matchups[mu]["high_scoring"]    = info.get("high_scoring")
         except Exception as e:
             logger.warning(f"Failed to fetch matchup labels: {e}")
         

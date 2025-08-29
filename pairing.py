@@ -181,11 +181,16 @@ def build_props_novig(
         if best:
             out[mu].append(best)
 
-    # sort each matchup list by highest probability (no 70% logic)
+    def _p_over(prop): return float(prop["fair"]["prob"]["over"])
+
+    # optional: pass in `over_only=True` from the route to hide low OVERs
+    if locals().get("over_only", False):
+        for mu in list(out.keys()):
+            out[mu] = [p for p in out[mu] if _p_over(p) >= 0.50]  # you can bump to your min_prob
+            if not out[mu]: del out[mu]
+
+    # strict over-first sort
     for mu in out:
-        out[mu].sort(
-            key=lambda p: max(p["fair"]["prob"]["over"], p["fair"]["prob"]["under"]),
-            reverse=True
-        )
+        out[mu].sort(key=_p_over, reverse=True)
 
     return out

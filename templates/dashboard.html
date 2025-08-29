@@ -955,7 +955,7 @@
                 }
                 
                 // Parse team names and apply favored highlighting
-                const teamParts = displayMatchup.split(' @ ');
+                const teamParts = displayMatchup.split('@');
                 let awayTeam = teamParts[0] || '';
                 let homeTeam = teamParts[1] || '';
                 
@@ -1046,7 +1046,7 @@
             }
             
             // Parse teams and apply favored highlighting
-            const teamParts = displayMatchup.split(' @ ');
+            const teamParts = displayMatchup.split('@');
             let awayTeam = teamParts[0] || '';
             let homeTeam = teamParts[1] || '';
             
@@ -1280,7 +1280,7 @@
             // Group NFL props by matchup
             const matchups = {};
             props.forEach(prop => {
-                const matchup = `${prop.away_team} @ ${prop.home_team}`;
+                const matchup = `${prop.away_team}@${prop.home_team}`;
                 if (!matchups[matchup]) {
                     matchups[matchup] = [];
                 }
@@ -1323,7 +1323,7 @@
         }
 
         function showNFLMatchupProps(matchup) {
-            const matchupProps = nflProps.filter(prop => `${prop.away_team} @ ${prop.home_team}` === matchup);
+            const matchupProps = nflProps.filter(prop => `${prop.away_team}@${prop.home_team}` === matchup);
             
             // Update header
             document.getElementById('games-header').innerHTML = `
