@@ -13,12 +13,18 @@ def _abbr(team: str):
     except Exception:
         return team
 
-def mk_matchup(away_team: str, home_team: str) -> str:
+def _mk_matchup(away_team: str, home_team: str) -> str:
     a = (_abbr(away_team) or "").strip().replace(" ", "")
     h = (_abbr(home_team) or "").strip().replace(" ", "")
     return f"{a}@{h}"
 
 def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, Any]]:
+    """
+    { matchup: {
+        favored_team, favored_prob, favored_book,
+        total_line, prob_over_total, total_book, high_scoring
+    } }
+    """
     out: Dict[str, Dict[str, Any]] = {}
     ODDS_API_KEY = os.getenv("ODDS_API_KEY")
     if not ODDS_API_KEY: return out
@@ -32,7 +38,7 @@ def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, A
         "oddsFormat": "american",
         "dateFormat": "iso",
         "bookmakers": ",".join(books),
-        "markets": "h2h,totals"
+        "markets": "h2h,totals",
     }
     r = requests.get(url, params=params, timeout=20)
     r.raise_for_status()
@@ -40,7 +46,7 @@ def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, A
     for ev in r.json() or []:
         away = ev.get("away_team") or ""
         home = ev.get("home_team") or ""
-        matchup = mk_matchup(away, home)
+        matchup = _mk_matchup(away, home)
 
         fav_team = fav_prob = fav_book = None
         tot_line = prob_over = tot_book = None
@@ -50,6 +56,7 @@ def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, A
             for mk in (bm.get("markets") or []):
                 k = mk.get("key")
                 oc = mk.get("outcomes") or []
+
                 if k == "h2h" and len(oc) >= 2:
                     price_home = price_away = None
                     for o in oc:
@@ -65,6 +72,7 @@ def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, A
                             else:
                                 if fav_prob is None or p_away > fav_prob:
                                     fav_team, fav_prob, fav_book = _abbr(away), p_away, book
+
                 if k == "totals" and len(oc) >= 2:
                     over = under = None; line = None
                     for o in oc:
@@ -76,7 +84,6 @@ def fetch_matchup_labels(league: str, books: List[str]) -> Dict[str, Dict[str, A
                     if over is not None and under is not None and line is not None:
                         p_over, p_under = novig_two_way(over, under)
                         if p_over is not None:
-                            # choose strongest signal
                             if (prob_over is None) or (abs(p_over-0.5) > abs(prob_over-0.5)):
                                 tot_line, prob_over, tot_book = line, p_over, book
 

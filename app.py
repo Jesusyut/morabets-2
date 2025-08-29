@@ -568,6 +568,55 @@ def dashboard():
         </html>
         '''
 
+@app.route("/dashboard_legacy")
+def dashboard_legacy():
+    """Legacy dashboard - preserved for backward compatibility"""
+    # Check for key parameter
+    user_key = request.args.get('key', '').strip()
+    
+    if user_key:
+        # Validate key
+        try:
+            with open(LICENSE_DB, 'r') as f:
+                keys = json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading license keys: {e}")
+            return redirect(url_for('index') + '?message=System+error.+Please+try+again.')
+        
+        # Check if key exists and is valid (case-insensitive)
+        is_valid = False
+        for key in keys:
+            if key.upper() == user_key.upper() and keys[key]:
+                is_valid = True
+                break
+        
+        if not is_valid:
+            logger.info(f"Invalid key attempt: {user_key}")
+            return redirect(url_for('index') + '?message=Invalid+key.+Please+try+again.')
+        
+        # Key is valid, set session and render dashboard
+        session["licensed"] = True
+        session["license_key"] = user_key
+        logger.info(f"✅ Legacy dashboard access granted for key: {user_key}")
+    
+    try:
+        hits = cache_incr("hits")
+        return render_template("dashboard_legacy.html", hits=hits)
+    except Exception as e:
+        logger.error(f"Error in legacy dashboard route: {e}")
+        return f'''
+        <!DOCTYPE html>
+        <html>
+        <head><title>Mora Bets - Legacy</title></head>
+        <body>
+        <h1>Mora Bets - Legacy Dashboard</h1>
+        <p>System Status: Running</p>
+        <p>Error: {str(e)}</p>
+        <p><a href="/dashboard">New Dashboard</a></p>
+        </body>
+        </html>
+        '''
+
 @app.route("/verify")
 def verify():
     """Handle Stripe success and generate license key"""
@@ -1251,6 +1300,14 @@ def l10_single():
         return jsonify({}), 200
     res = compute_l10(player, stat, line_f, lookback=lookback)
     return jsonify(res or {}), 200
+
+
+@app.route("/labels")
+def labels_endpoint():
+    league = (request.args.get("league") or "mlb").lower()
+    books = ["draftkings", "fanduel", "betmgm"]
+    labels = fetch_matchup_labels(league=league, books=books)
+    return jsonify(labels), 200
 
 
 @app.route("/analytics")

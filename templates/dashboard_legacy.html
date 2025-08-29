@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Top Props{% endblock %}
+
+{% block content %}
+<style>
+  :root {
+    --bg: #0f1420;
+    --card: #161b28;
+    --stroke: #2b3245;
+    --text: #e6e9f2;
+    --muted: #9aa4bf;
+    --accent: #7c6dff;
+    --green: #2dd36f;
+    --yellow: #f9d65a;
+  }
+  body { background: var(--bg); color: var(--text); }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 56px; }
+  .toolbar { display:flex; gap:12px; align-items:center; justify-content:center; margin-bottom:18px; }
+  .tab { background: transparent; color: var(--muted); border:1px solid var(--stroke); padding:8px 12px; border-radius:999px; cursor:pointer; }
+  .tab.active { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .search { width:100%; max-width:460px; padding:10px 12px; border-radius:10px; background: var(--card); border:1px solid var(--stroke); color: var(--text); }
+  .grid { display:grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap:14px; }
+  @media (min-width: 900px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .card { background: var(--card); border: 1px solid var(--stroke); border-radius: 14px; padding: 14px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .pill { font-size:12px; border:1px solid var(--stroke); padding:4px 8px; border-radius:999px; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .over { color: var(--green); font-weight:600; }
+  .under { color: var(--yellow); }
+  .load { margin:22px auto 0; display:block; padding:10px 14px; border:1px solid var(--stroke); border-radius:10px; color:var(--text); background:transparent; }
+  .sr-only { position:absolute; left:-9999px; }
+</style>
+
+<div class="wrap">
+
+  <!-- league tabs + search -->
+  <div class="toolbar">
+    <button class="tab active" data-league="mlb">MLB</button>
+    <button class="tab" data-league="nfl">NFL</button>
+    <button class="tab" data-league="nba">NBA</button>
+    <button class="tab" data-league="nhl">NHL</button>
+  </div>
+  <div class="toolbar" style="gap:8px;">
+    <label for="q" class="sr-only">Search</label>
+    <input id="q" class="search" placeholder="Search players or stats…" />
+  </div>
+
+  <!-- props grid -->
+  <div id="top-props" class="grid"></div>
+  <button id="load-more" class="load">Load More Props</button>
+
+</div>
+
+<script>
+(function(){
+  let league = 'mlb';
+  let limit = 60, offset = 0;
+  const q = document.getElementById('q');
+  const grid = document.getElementById('top-props');
+  const loadBtn = document.getElementById('load-more');
+  let allItems = [];  // cache current league items for client-side search
+
+  function pct(x){ return Math.round(Number(x)*100); }
+
+  function cardHTML(p){
+    const over = pct(p.fair.prob.over);
+    const under = pct(p.fair.prob.under);
+    const src = (p.meta && p.meta.source) ? p.meta.source.toUpperCase() : (p.fair.book || p.shop || '');
+    const l10 = p.meta && p.meta.l10 ? `L10: ${p.meta.l10.over_hits}/${p.meta.l10.games} (${pct(p.meta.l10.rate_over)}%)` : '';
+    return `
+      <div class="card" data-name="${(p.player||'').toLowerCase()}" data-stat="${(p.stat||'').toLowerCase()}">
+        <div class="row">
+          <div class="muted">${p.matchup}</div>
+          <div class="pill">${p.stat} ${p.line}</div>
+        </div>
+        <div style="margin-top:6px; font-weight:600;">${p.player}</div>
+        <div style="margin-top:10px;">
+          <div class="over">Over ${over}%</div>
+          <div class="under">Under ${under}%</div>
+        </div>
+        ${l10 ? `<div class="muted" style="margin-top:8px; font-size:12px;">${l10}</div>` : ``}
+        <div class="muted" style="margin-top:8px; font-size:12px;">Source: ${src}</div>
+      </div>
+    `;
+  }
+
+  async function fetchPage(){
+    loadBtn.disabled = true;
+    try{
+      const url = `/player_props/top?league=${league}&limit=${limit}&offset=${offset}&over_only=1&min_prob=0.50&include_l10=1`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const items = data.items || [];
+      if (offset === 0) {
+        grid.innerHTML = '';
+        allItems = [];
+      }
+      items.forEach(p => {
+        allItems.push(p);
+        grid.insertAdjacentHTML('beforeend', cardHTML(p));
+      });
+      offset += items.length;
+      if (offset >= (data.total || 0) || items.length === 0) {
+        loadBtn.style.display = 'none';
+      } else {
+        loadBtn.style.display = 'block';
+      }
+    } catch(e){
+      console.error('Top props failed', e);
+    } finally {
+      loadBtn.disabled = false;
+    }
+  }
+
+  function applySearch(){
+    const term = (q.value || '').trim().toLowerCase();
+    if (!term){
+      // show all
+      Array.from(grid.children).forEach(el=> el.style.display='');
+      return;
+    }
+    Array.from(grid.children).forEach(el=>{
+      const name = el.getAttribute('data-name') || '';
+      const stat = el.getAttribute('data-stat') || '';
+      el.style.display = (name.includes(term) || stat.includes(term)) ? '' : 'none';
+    });
+  }
+
+  // wire tabs
+  document.querySelectorAll('.tab').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      league = btn.dataset.league;
+      offset = 0;
+      fetchPage();
+    });
+  });
+
+  // search
+  q.addEventListener('input', applySearch);
+
+  // load more
+  loadBtn.addEventListener('click', fetchPage);
+
+  // first load
+  fetchPage();
+})();
+</script>
+{% endblock %}
