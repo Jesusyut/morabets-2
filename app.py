@@ -1038,7 +1038,24 @@ def get_props():
                 logger.warning("[NOVIG] No raw offers available, returning empty response")
                 return jsonify({}), 200
                 
-            grouped = build_props_novig(league, raw_offers, prefer_books=books)
+            # Parse new confidence controls
+            prioritize_high = (request.args.get("prioritize_high", "true").lower() in ("1","true","yes","on"))
+            high_only = (request.args.get("high_only", "0").lower() in ("1","true","yes","on"))
+            high_threshold = float(request.args.get("high_threshold", "0.70") or 0.70)
+            prefer = (request.args.get("prefer", "over").lower() in ("over","any")) and request.args.get("prefer","over").lower() or "over"
+            
+            # Get default overround from environment variable
+            default_overround = float(os.getenv("NOVIG_DEFAULT_OVERROUND", "0.04"))
+            
+            grouped = build_props_novig(
+                league, raw_offers,
+                prefer_books=books,
+                allow_crossbook=True,
+                allow_single_side_fallback=True,
+                default_overround=default_overround,
+                prefer_side=prefer,
+                high_threshold=high_threshold
+            )
             total_props = sum(len(props) for props in grouped.values())
             logger.info(f"[NOVIG] Built {total_props} props from {len(raw_offers)} offers across {len(grouped)} matchups")
 
@@ -1048,6 +1065,18 @@ def get_props():
                     grouped[mu] = [
                         p for p in grouped[mu]
                         if max(p["fair"]["prob"]["over"], p["fair"]["prob"]["under"]) >= min_prob
+                    ]
+                    if not grouped[mu]:
+                        del grouped[mu]
+
+            # High-only filter (optional)
+            if high_only:
+                tag1 = f"HIGH_OVER_{int(high_threshold*100)}"
+                tag2 = f"HIGH_ANY_{int(high_threshold*100)}"
+                for mu in list(grouped.keys()):
+                    grouped[mu] = [
+                        p for p in grouped[mu] 
+                        if tag1 in p.get("meta",{}).get("flags",[]) or tag2 in p.get("meta",{}).get("flags",[])
                     ]
                     if not grouped[mu]:
                         del grouped[mu]
@@ -1303,7 +1332,7 @@ def matchups():
             games = data
         
         # Simple matchup format for quick display
-        matchups = []
+        matchups = {}
         
         # Ensure games is a list and contains valid game objects
         if not isinstance(games, list):
@@ -1316,16 +1345,35 @@ def matchups():
             home = game.get("home_team")
             away = game.get("away_team")
             if home and away:
-                matchups.append({
-                    "matchup": format_matchup(away, home),
+                matchup = format_matchup(away, home)
+                matchups[matchup] = {
+                    "matchup": matchup,
                     "start_time": game.get("commence_time", "Unknown"),
                     "home_team": home,
                     "away_team": away,
                     "home_abbr": get_team_abbreviation(home),
                     "away_abbr": get_team_abbreviation(away)
-                })
+                }
         
-        return jsonify(matchups)
+        # Fetch matchup labels (favored team, high-scoring, etc.)
+        try:
+            from labels import fetch_matchup_labels
+            
+            league = (request.args.get("league") or "mlb").lower()
+            date_iso = request.args.get("date")
+            books_qs = request.args.get("books")
+            books = [b.strip().lower() for b in books_qs.split(",")] if books_qs else None
+
+            labels = fetch_matchup_labels(league=league, date_iso=date_iso, books=books)
+            
+            # Attach labels to existing matchups without breaking shape
+            for mu, info in labels.items():
+                if mu in matchups:
+                    matchups[mu]["labels"] = info
+        except Exception as e:
+            logger.warning(f"Failed to fetch matchup labels: {e}")
+        
+        return jsonify(matchups), 200
     except Exception as e:
         logger.error(f"Error in matchups endpoint: {e}")
         return jsonify({"error": "Failed to process matchups"}), 500
