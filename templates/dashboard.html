@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Mora Bets — Top Props</title>
+  <title>Mora Bets</title>
   <link rel="icon" href="/favicon.ico" type="image/x-icon" />
   <style>
     :root{--bg:#0f1420;--card:#161b28;--stroke:#2b3245;--text:#e6e9f2;--muted:#9aa4bf;--accent:#7c6dff;--green:#2dd36f;--amber:#f9d65a;--rose:#ff6b81;}
@@ -36,7 +36,7 @@
 <body>
   <div class="wrap">
     <div class="topbar">
-      <h1 class="title">Top Props</h1>
+      <h1 class="title">Mora Bets</h1>
       <div class="kpi">
         <span id="counter">–</span> props &nbsp;·&nbsp;
         <a class="link" href="/dashboard_legacy">Browse by matchup (legacy)</a>
@@ -68,8 +68,20 @@
     const q=document.getElementById('q');
     const counter=document.getElementById('counter');
     let labelMap = {}; // matchup -> labels
-    function pct(x){ return Math.round(Number(x)*100); }
-    function esc(s){ return (s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+    // utils
+    const pct = (x)=> Math.round(Number(x)*100);
+    const esc = (s)=> (s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+    // normalize stat names and restrict to Hits/TB (MLB batters)
+    function isHitsOrTB(stat){
+      if(!stat) return false;
+      const s = String(stat).toLowerCase();
+      return (
+        s === 'hits' || s === 'batter_hits' ||
+        s === 'total_bases' || s === 'batter_total_bases'
+      );
+    }
 
     async function loadLabels(){
       try{
@@ -89,15 +101,18 @@
     }
 
     function cardHTML(p){
-      const over=pct(p.fair.prob.over);
-      const under=pct(p.fair.prob.under);
-      const src=(p.meta&&p.meta.source)?p.meta.source.toUpperCase():(p.fair.book||p.shop||'');
-      const l10=p.meta&&p.meta.l10?`L10: ${p.meta.l10.over_hits}/${p.meta.l10.games} (${pct(p.meta.l10.rate_over)}%)`:'';
+      const over=pct(p?.fair?.prob?.over ?? 0);
+      const under=pct(p?.fair?.prob?.under ?? 0);
+      const src=(p?.meta?.source ? p.meta.source.toUpperCase() : (p?.fair?.book || p?.shop || ''));
+      const l10=(p?.meta?.l10)
+        ? `L10: ${p.meta.l10.over_hits}/${p.meta.l10.games} (${pct(p.meta.l10.rate_over)}%)`
+        : '';
+      const stat = (p?.stat || '').toString();
       return `
-        <div class="card" data-name="${esc((p.player||'').toLowerCase())}" data-stat="${esc((p.stat||'').toLowerCase())}">
+        <div class="card" data-name="${esc((p.player||'').toLowerCase())}" data-stat="${esc(stat.toLowerCase())}">
           <div class="row">
             <div class="muted">${esc(p.matchup||'')}</div>
-            <div class="pill">${esc(p.stat)} ${esc(p.line)}</div>
+            <div class="pill">${esc(stat)} ${esc(p.line)}</div>
           </div>
           ${badgesHTML(p.matchup)}
           <div style="margin-top:6px;font-weight:600;">${esc(p.player||'')}</div>
@@ -114,22 +129,30 @@
     async function fetchPage(){
       loadBtn.disabled = true;
       try{
-        const res = await fetch(`/player_props/top?league=${league}&limit=${limit}&offset=${offset}&over_only=1&min_prob=0.50&include_l10=1`);
+        // pull over-side props with fair probabilities and L10 (enrichment can be absent)
+        const url = `/player_props/top?league=${league}&limit=${limit}&offset=${offset}&over_only=1&min_prob=0.50&include_l10=1`;
+        const res = await fetch(url);
         const data = await res.json();
+
         if(offset===0){ grid.innerHTML=''; }
-        const items=(data.items||[]).filter(p=>{
-          const s=(p.stat||'').toLowerCase();
-          const ln=parseFloat(p.line||0);
-          return !(s==='batter_total_bases' && ln>1.5);
-        });
+
+        // keep only MLB batter Hits & Total Bases; no artificial TB line cap
+        const items=(data.items||[]).filter(p => isHitsOrTB(p?.stat));
+
         items.forEach(p=> grid.insertAdjacentHTML('beforeend', cardHTML(p)));
         offset += items.length;
+
         counter.textContent = (data.total || 0).toLocaleString();
         loadBtn.style.display = (offset>=(data.total||0) || items.length===0) ? 'none' : 'block';
       }catch(e){
         console.error('Top props load failed', e);
-        if(offset===0){ grid.innerHTML = '<div class="card"><div class="muted">Failed to load props.</div></div>'; loadBtn.style.display='none'; }
-      }finally{ loadBtn.disabled=false; }
+        if(offset===0){
+          grid.innerHTML = '<div class="card"><div class="muted">Failed to load props.</div></div>';
+          loadBtn.style.display='none';
+        }
+      }finally{
+        loadBtn.disabled=false;
+      }
     }
 
     function applySearch(){
@@ -144,7 +167,7 @@
 
     async function refresh(){
       offset=0;
-      await loadLabels();   // load badges first
+      await loadLabels();   // load badges first (favored / high-scoring)
       await fetchPage();    // then load first props page
     }
 
@@ -156,6 +179,7 @@
         refresh();
       });
     });
+
     q.addEventListener('input', applySearch);
     loadBtn.addEventListener('click', fetchPage);
 
