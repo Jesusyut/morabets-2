@@ -1176,21 +1176,20 @@ def get_props():
         }), 503
 
 
-# --- NEW endpoint: global Top Props (flat list) ---
+# --- TOP PROPS (flat, global) ---
 @app.route("/player_props/top")
 def top_props():
     league = (request.args.get("league") or "mlb").lower()
     date_iso = request.args.get("date")
     books_qs = request.args.get("books")
     books = [b.strip().lower() for b in books_qs.split(",")] if books_qs else ["draftkings", "fanduel", "betmgm"]
-    limit = max(1, min(int(request.args.get("limit", "50")), 200))
+    limit = max(1, min(int(request.args.get("limit", "60")), 200))
     offset = max(0, int(request.args.get("offset", "0")))
-    min_prob = float(request.args.get("min_prob", "0.50"))  # focus on over bets
+    min_prob = float(request.args.get("min_prob", "0.50"))     # focus on OVER
     over_only = (request.args.get("over_only", "1").lower() in ("1","true","yes","on"))
     include_l10 = (request.args.get("include_l10", "1").lower() in ("1","true","yes","on"))
     lookback = int(request.args.get("l10_lookback", "10"))
 
-    # fetch raw player props (per-event odds) -> grouped (by matchup) -> flatten
     raw = fetch_player_prop_offers_flat(league=league, date_iso=date_iso, books=books, markets=None)
     grouped = build_props_novig(
         league, raw,
@@ -1198,8 +1197,8 @@ def top_props():
         allow_crossbook=True,
         allow_single_side_fallback=True,
         default_overround=0.04,
-        prefer_side="over",      # let pairer compute and retain .fair.prob.over
-        high_threshold=0.70      # irrelevant for ordering; harmless to keep
+        prefer_side="over",
+        high_threshold=0.70
     )
 
     flat = []
@@ -1209,44 +1208,32 @@ def top_props():
             item["matchup"] = mu
             flat.append(item)
 
-    # Over-only filter & threshold
     if over_only:
-        thr = max(0.50, min_prob)
-        flat = [x for x in flat if float(x["fair"]["prob"]["over"]) >= thr]
+        flat = [x for x in flat if float(x["fair"]["prob"]["over"]) >= min_prob]
     else:
         flat = [x for x in flat if max(x["fair"]["prob"]["over"], x["fair"]["prob"]["under"]) >= min_prob]
 
-    # Sort by OVER probability descending
     flat.sort(key=lambda x: float(x["fair"]["prob"]["over"]), reverse=True)
 
     total = len(flat)
     page = flat[offset: offset + limit]
 
-    # Attach L10 to just the current page (fast, cheap)
     if include_l10 and page:
-        # reuse annotate but on a tiny synthetic bucket to preserve shape
         bucket = {}
         for it in page:
             bucket.setdefault(it["matchup"], []).append(it)
         try:
             bucket = annotate_props_with_l10(bucket, league=league, lookback=lookback)
         except Exception as e:
-            logger.warning(f"[L10] annotate failed on page: {e}")
-        # flatten again (order unchanged)
+            app.logger.warning(f"[L10] annotate failed on page: {e}")
         page = []
         for mu, items in bucket.items():
             for it in items:
                 it["matchup"] = mu
                 page.append(it)
-        # keep order by OVER prob
         page.sort(key=lambda x: float(x["fair"]["prob"]["over"]), reverse=True)
 
-    return jsonify({
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "items": page
-    }), 200
+    return jsonify({"total": total, "limit": limit, "offset": offset, "items": page}), 200
 
 
 # (Optional) On-demand single L10 call for lazy fetch on the card, if needed:
