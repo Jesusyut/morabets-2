@@ -1,251 +1,172 @@
-import os, sys, requests, json
-from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any, Optional, Tuple
+# nfl_odds_api.py
+from __future__ import annotations
+import os, time
+from datetime import datetime, timedelta
+from collections import defaultdict
+from typing import Any, Dict, List, Tuple, Optional
 
-ODDS_API_KEY = os.getenv("ODDS_API_KEY")
-BASE = "https://api.the-odds-api.com/v4"
+import requests
 
-def _debug_log(tag: str, url: str, params: dict):
-    try:
-        print(f"[NFL][{tag}] GET {url} params={json.dumps(params, sort_keys=True)}")
-    except Exception:
-        pass
+# ---- Config / constants ----
+BASE = "https://api.the-odds-api.com"
+SPORT_KEY = "americanfootball_nfl"  # NFL
+API_KEY = os.getenv("ODDS_API_KEY") or os.getenv("THE_ODDS_API_KEY") or ""
+REGIONS = os.getenv("ODDS_REGIONS", "us")
+ODDS_FORMAT = "american"
+PREFERRED_BOOKMAKER_KEYS = [b for b in os.getenv("ODDS_PREFERRED_BOOKS","").lower().split(",") if b]
 
-def list_event_markets(sport_key: str, event_id: str) -> list[str]:
-    url = f"{BASE}/sports/{sport_key}/events/{event_id}/markets"
-    params = {"regions": "us"}
-    _debug_log("markets-list", url, params)
-    data, _ = _get(url, params)
-    markets = data if isinstance(data, list) else data.get("markets", [])
-    return [m.get("key") for m in markets if isinstance(m, dict) and m.get("key")]
+session = requests.Session()
+session.headers.update({"User-Agent": "MoraBets/1.0 (+NFL props v4)"})
 
-PRIMARY_BOOKS = ["draftkings","fanduel"]  # preseason focus
-ALL_BOOKS = ["draftkings","fanduel","betmgm","caesars","pointsbetus"]
-
-DEFAULT_MARKETS = [
-    "player_pass_yds",
-    "player_pass_tds",
-    "player_rush_yds",
-    "player_rush_tds",
-    "player_receptions",
-    "player_reception_yds",
-    "player_reception_tds",
-    # optional, but supported:
-    # "player_pass_interceptions",
-    # "player_rush_attempts",
-    # "player_reception_longest",
-    # "player_pass_longest_completion",
-    # "player_kicking_points",
+# ---- NFL player prop markets (from Odds API docs: NFL/NCAAF/CFL Player Props) ----
+NFL_PLAYER_PROP_MARKETS: List[str] = [
+    "player_pass_yds", "player_pass_tds", "player_pass_attempts", "player_pass_completions",
+    "player_pass_interceptions", "player_rush_yds", "player_rush_attempts", "player_rush_tds",
+    "player_receptions", "player_reception_yds", "player_reception_tds",
+    "player_reception_longest", "player_pass_longest_completion",
+    "player_anytime_td", "player_1st_td", "player_last_td",
+    "player_field_goals", "player_kicking_points",
+    "player_sacks", "player_solo_tackles", "player_tackles_assists",
+    "player_pass_rush_reception_yds", "player_pass_rush_reception_tds",
 ]
+# (Add alternates later if you want *_alternate keys)
 
-# Extended markets for regular season
-EXTENDED_MARKETS = [
-    "player_pass_yds",
-    "player_pass_tds",
-    "player_rush_yds",
-    "player_rush_tds",
-    "player_receptions",
-    "player_reception_yds",
-    "player_reception_tds",
-    # optional, but supported:
-    # "player_pass_interceptions",
-    # "player_rush_attempts",
-    # "player_reception_longest",
-    # "player_pass_longest_completion",
-    # "player_kicking_points",
-]
+# ---- No-vig helpers (use your local module if available) ----
+try:
+    from novig import american_to_prob, novig_two_way
+except Exception:
+    # Fallbacks
+    def american_to_prob(odds: int | float) -> float:
+        o = float(odds)
+        return 100.0/(o+100.0) if o > 0 else (-o)/(100.0 - o)
+    def novig_two_way(oddsa: int, oddsb: int) -> Tuple[float,float]:
+        pa, pb = american_to_prob(oddsa), american_to_prob(oddsb)
+        z = (pa + pb) or 1.0
+        return pa/z, pb/z
 
-def _get(url: str, params: Dict[str, Any], timeout: int = 20) -> Tuple[Any, Dict[str,str]]:
-    if not ODDS_API_KEY:
-        raise RuntimeError("ODDS_API_KEY is not set")
-    q = {**params, "apiKey": ODDS_API_KEY}
-    r = requests.get(url, params=q, timeout=timeout)
-    hdrs = {k.lower(): v for k,v in r.headers.items()}
-    if r.status_code != 200:
-        try:
-            detail = r.json()
-        except Exception:
-            detail = r.text
-        raise RuntimeError(f"Odds API error {r.status_code} at {url}: {detail}")
-    try:
-        return r.json(), hdrs
-    except Exception as e:
-        raise RuntimeError(f"Invalid JSON at {url}: {e}")
+def prob_to_american(p: float) -> int:
+    if p <= 0 or p >= 1: return 0
+    return int(round(-100*p/(1-p))) if p >= 0.5 else int(round(100*(1-p)/p))
 
-def _log_headers(tag: str, hdrs: Dict[str,str]):
-    rem = hdrs.get("x-requests-remaining")
-    used = hdrs.get("x-requests-used")
-    lim  = hdrs.get("x-requests-limit")
-    if rem or used or lim:
-        print(f"[NFL][{tag}] usage remaining={rem} used={used} limit={lim}", file=sys.stderr)
+# ---- HTTP helpers ----
+def _get_json(path: str, **params) -> Dict[str, Any]:
+    assert API_KEY, "ODDS_API_KEY missing"
+    url = f"{BASE}/v4{path}"
+    params["apiKey"] = API_KEY
+    r = session.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    return r.json() or {}
 
-def _detect_nfl_sport_key(hours_ahead: int = 168) -> str:
-    now = datetime.now(timezone.utc)
+def list_nfl_events(hours_ahead: int = 48) -> List[Dict[str, Any]]:
+    now = datetime.utcnow().replace(microsecond=0)
     end = now + timedelta(hours=hours_ahead)
-    window = {
-        "commenceTimeFrom": now.replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-        "commenceTimeTo": end.replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-        "regions": "us",
-        "oddsFormat": "american",
-    }
-    preseason = "americanfootball_nfl_preseason"
-    regular = "americanfootball_nfl"
-    try:
-        ev, hdrs = _get(f"{BASE}/sports/{preseason}/events", window)
-        _log_headers("detect-pre", hdrs)
-        if ev:
-            return preseason
-    except Exception:
-        pass
-    return regular
-
-def _list_events(sport_key: str, hours_ahead: int = 168) -> List[Dict[str, Any]]:
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(hours=hours_ahead)
-    ev, hdrs = _get(
-        f"{BASE}/sports/{sport_key}/events",
-        {
-            "commenceTimeFrom": now.replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-            "commenceTimeTo": end.replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-            "regions": "us",
-            "oddsFormat": "american",
-        },
+    return _get_json(
+        f"/sports/{SPORT_KEY}/events",
+        commenceTimeFrom=now.isoformat() + "Z",
+        commenceTimeTo=end.isoformat() + "Z",
     )
-    _log_headers(f"events-{sport_key}", hdrs)
-    return ev
 
-def _event_odds(sport_key: str, event_id: str, markets: List[str], books: Optional[List[str]] = None) -> Dict[str, Any]:
-    # mirror MLB: no bookmaker filter by default, CSV for markets
-    url = f"{BASE}/sports/{sport_key}/events/{event_id}/odds"
-    params = {
-        "regions": "us",
-        "oddsFormat": "american",
-        "markets": ",".join(markets),
-    }
-    if books:
-        params["bookmakers"] = ",".join(books)
-    _debug_log("event-odds", url, params)
-    data, hdrs = _get(url, params)
-    _log_headers(f"event-{event_id}", hdrs)
-    payloads = data if isinstance(data, list) else [data]
-    for p in payloads:
-        if isinstance(p, dict) and p.get("bookmakers"):
-            return p
-    return payloads[0] if payloads else {}
-
-def _build_event_shell(ev: Dict[str, Any], bookmakers: List[Dict[str,Any]]) -> Dict[str, Any]:
-    return {
-        "id": ev.get("id"),
-        "commence_time": ev.get("commence_time"),
-        "home_team": ev.get("home_team"),
-        "away_team": ev.get("away_team"),
-        "teams": ev.get("teams", []),
-        "bookmakers": bookmakers or [],
-    }
-
-def fetch_nfl_props(
-    markets: Optional[List[str]] = None,
-    hours_ahead: int = 168,
-) -> List[Dict[str, Any]]:
-    mkts = markets or DEFAULT_MARKETS
-    sport_key = _detect_nfl_sport_key(hours_ahead)
-    events = _list_events(sport_key, hours_ahead)
-    out: List[Dict[str, Any]] = []
-
-    for ev in events:
-        ev_id = ev.get("id")
-        if not ev_id:
-            continue
-        try:
-            p = _event_odds(sport_key, ev_id, mkts, None)  # mirror MLB: no bookmaker filter
-        except RuntimeError as e:
-            print(f"[NFL] Event {ev_id} failed: {e}")
-            continue
-        
-        # keep ONLY events that actually have markets
-        if p.get("bookmakers"):
-            out.append({
-                "id": ev_id,
-                "commence_time": ev.get("commence_time"),
-                "home_team": ev.get("home_team"),
-                "away_team": ev.get("away_team"),
-                "teams": ev.get("teams", []),
-                "bookmakers": p.get("bookmakers", []),
-            })
-    return out
-
-# ----- Environment (favored team + totals) -----
-def _bulk_odds(sport_key: str, markets: List[str], hours_ahead: int) -> List[Dict[str, Any]]:
-    now = datetime.now(timezone.utc)
-    end = now + timedelta(hours=hours_ahead)
-    data, hdrs = _get(
-        f"{BASE}/sports/{sport_key}/odds",
-        {
-            "regions": "us",
-            "oddsFormat": "american",
-            "dateFormat": "iso",
-            "markets": ",".join(markets),
-            "commenceTimeFrom": now.replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-            "commenceTimeTo": end.replace(microsecond=0).isoformat().replace('+00:00', 'Z'),
-        },
-    )
-    _log_headers(f"bulk-{sport_key}", hdrs)
+def nfl_event_odds(event_id: str, markets: List[str]) -> Dict[str, Any]:
+    base_params = {"regions": REGIONS, "oddsFormat": ODDS_FORMAT, "markets": ",".join(markets)}
+    params = dict(base_params)
+    if PREFERRED_BOOKMAKER_KEYS:
+        params["bookmakers"] = ",".join(PREFERRED_BOOKMAKER_KEYS)
+    data = _get_json(f"/sports/{SPORT_KEY}/events/{event_id}/odds", **params)
+    # fallback without bookmaker filter if empty
+    if not (data.get("bookmakers") or []):
+        data = _get_json(f"/sports/{SPORT_KEY}/events/{event_id}/odds", **base_params)
     return data
 
-def _classify_environment(total_point: float, over_odds: int, under_odds: int) -> str:
-    try:
-        t = float(total_point)
-    except Exception:
-        return "Neutral"
-    if t >= 47.5 and isinstance(over_odds, (int,float)) and isinstance(under_odds, (int,float)) and over_odds <= under_odds:
-        return "High"
-    if t <= 41.5 and isinstance(over_odds, (int,float)) and isinstance(under_odds, (int,float)) and under_odds <= over_odds:
-        return "Low"
-    return "Neutral"
+# ---- Pair Over/Under (or Yes/No) for a given market ----
+def _pair_outcomes(bookmakers: List[Dict[str,Any]], stat_key: str) -> dict:
+    """
+    Returns dict: {(player, stat_key, point): {"over": {...}, "under": {...}}}
+    """
+    pairs = defaultdict(lambda: {"over": None, "under": None})
+    for b in bookmakers or []:
+        bkey = b.get("key","")
+        for m in b.get("markets", []):
+            if m.get("key") != stat_key:
+                continue
+            for out in m.get("outcomes", []):
+                player = out.get("description") or out.get("name") or ""
+                side   = (out.get("name") or "").lower()  # "Over"/"Under" or "Yes"/"No"
+                point  = out.get("point")
+                price  = out.get("price")
+                if not player or price is None:
+                    continue
+                # Normalize Yes/No -> Over/Under for binary props (e.g., anytime TD)
+                if side not in ("over","under"):
+                    side = "over" if side in ("yes", "anytime_td") else ("under" if side=="no" else side)
+                k = (player, stat_key, point)
+                tick = {"book": bkey, "price": int(price), "point": point}
+                if side == "over" and not pairs[k]["over"]:
+                    pairs[k]["over"] = tick
+                elif side == "under" and not pairs[k]["under"]:
+                    pairs[k]["under"] = tick
+    return pairs
 
-def get_nfl_game_environment_map(hours_ahead: int = 96) -> Dict[str, Dict[str, Any]]:
-    from team_abbreviations import TEAM_ABBREVIATIONS
-    sport_key = _detect_nfl_sport_key(hours_ahead)
-    data = _bulk_odds(sport_key, ["h2h","totals"], hours_ahead)
-    env_map: Dict[str, Dict[str, Any]] = {}
-    for event in data:
-        home = event.get("home_team",""); away = event.get("away_team","")
-        if not home or not away: continue
-        H = TEAM_ABBREVIATIONS.get(home, home); A = TEAM_ABBREVIATIONS.get(away, away)
-        matchup_key = f"{A} @ {H}"
+def _attach_fair(row: Dict[str,Any], over: Dict[str,Any] | None, under: Dict[str,Any] | None):
+    fair = {"prob": {}, "american": {}}
+    if over and under:
+        p_over, p_under = novig_two_way(over["price"], under["price"])
+        fair["prob"]["over"], fair["prob"]["under"] = p_over, p_under
+        fair["american"]["over"] = prob_to_american(p_over)
+        fair["american"]["under"] = prob_to_american(p_under)
+        row["book"] = over["book"]
+    else:
+        side = "over" if over else "under"
+        tick = over or under
+        p = american_to_prob(tick["price"])
+        fair["prob"][side] = p
+        fair["american"][side] = tick["price"]
+        row["book"] = tick["book"]
+    row["fair"] = fair
 
-        total_point = over_odds = under_odds = home_ml = away_ml = None
-        for bm in event.get("bookmakers", []):
-            for market in bm.get("markets", []):
-                if market.get("key") == "totals":
-                    for o in market.get("outcomes", []):
-                        if o.get("name") == "Over": total_point, over_odds = o.get("point"), o.get("price")
-                        elif o.get("name") == "Under": under_odds = o.get("price")
-                elif market.get("key") == "h2h":
-                    for o in market.get("outcomes", []):
-                        if o.get("name") == home: home_ml = o.get("price")
-                        elif o.get("name") == away: away_ml = o.get("price")
+# ---- Public: fetch NFL player props (MLB-shaped rows) ----
+def fetch_nfl_player_props(hours_ahead: int = 48) -> List[Dict[str, Any]]:
+    events = list_nfl_events(hours_ahead=hours_ahead)
+    all_props: List[Dict[str,Any]] = []
 
-        favored = None
-        if home_ml is not None and away_ml is not None:
-            favored = H if home_ml < away_ml else A
+    # split markets into two small batches to be kind to rate limits
+    batches = [NFL_PLAYER_PROP_MARKETS[:8], NFL_PLAYER_PROP_MARKETS[8:]]
+    for ev in events:
+        eid = ev.get("id")
+        if not eid: 
+            continue
+        home, away = ev.get("home_team","Home"), ev.get("away_team","Away")
+        matchup = f"{away} @ {home}"
+        sidebook = {}
 
-        env_map[matchup_key] = {
-            "environment": _classify_environment(total_point, over_odds, under_odds) if total_point is not None else "Neutral",
-            "total": total_point,
-            "over_odds": over_odds,
-            "under_odds": under_odds,
-            "favored_team": favored,
-            "home_team": H,
-            "away_team": A,
-        }
-    return env_map
+        for i, mk in enumerate(batches):
+            try:
+                if i: time.sleep(1)  # tiny spacing between calls
+                data = nfl_event_odds(eid, mk)
+                for stat_key in mk:
+                    sb = _pair_outcomes(data.get("bookmakers", []), stat_key)
+                    sidebook.update(sb)
+            except Exception as e:
+                print(f"[NFL] warn: event {eid} markets {mk} failed: {e}")
 
-if __name__ == "__main__":
-    try:
-        sk = _detect_nfl_sport_key()
-        print("sport_key:", sk)
-        props = fetch_nfl_props(hours_ahead=96)
-        print("events_with_props:", len(props))
-    except Exception as e:
-        print("Error:", e)
+        # shape rows like MLB
+        for (player, stat_key, point), sides in sidebook.items():
+            over, under = sides.get("over"), sides.get("under")
+            row = {
+                "league": "nfl",
+                "matchup": matchup,
+                "player": player,
+                "stat": stat_key,
+                "line": point,
+                "shop": {},
+            }
+            if over:  row["shop"]["over"]  = {"american": over["price"],  "book": over["book"]}
+            if under: row["shop"]["under"] = {"american": under["price"], "book": under["book"]}
+            row["side"] = "both" if (over and under) else ("over" if over else ("under" if under else "unknown"))
+            _attach_fair(row, over, under)
+            all_props.append(row)
+
+    # sort strongest first (by fair prob over, like MLB)
+    def keyfn(p):
+        return ((p.get("fair") or {}).get("prob") or {}).get("over") or 0.0
+    all_props.sort(key=keyfn, reverse=True)
+    return all_props

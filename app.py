@@ -27,6 +27,7 @@ from prop_deduplication import deduplicate_props_by_player, get_stat_display_nam
 from pairing import build_props_novig
 from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id, get_last_10_trend  # NEW
 from props_ncaaf import fetch_ncaaf_player_props
+from nfl_odds_api import fetch_nfl_player_props
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1119,6 +1120,11 @@ def get_props():
             if league == "ncaaf":
                 props = fetch_ncaaf_player_props()
                 return jsonify({"league":"ncaaf","props":props})
+            
+            # NFL branch
+            if league == "nfl":
+                props = fetch_nfl_player_props()
+                return jsonify({"league":"nfl","props": props})
             
             date_iso = request.args.get("date")  # optional "YYYY-MM-DD"
             min_prob = float(request.args.get("min_prob", "0") or 0)
