@@ -25,7 +25,7 @@ from enrichment import load_props_from_file
 from probability import implied_probability, calculate_edge, kelly_bet_size, calculate_parlay_edge
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
-from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id  # NEW
+from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id, get_last_10_trend  # NEW
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -2689,6 +2689,15 @@ def contextual_who():
         return {"error":"missing name"}, 400
     pid = resolve_mlb_player_id(name)
     return {"name": name, "id": pid}
+
+# New L10 trends API route
+@app.get("/api/trends/l10")
+def api_trends_l10():
+    player = request.args.get("player", "")
+    stat = request.args.get("stat", "hits")
+    season = request.args.get("season", type=int)
+    out = get_last_10_trend(player, stat_key=stat, season=season)
+    return jsonify(out)
 
 # Flask app startup
 if __name__ == "__main__":
