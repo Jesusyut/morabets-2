@@ -26,6 +26,7 @@ from probability import implied_probability, calculate_edge, kelly_bet_size, cal
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
 from trends_l10 import annotate_props_with_l10, compute_l10  # NEW
+from contextual import get_contextual_hit_rate
 
 from team_abbreviations import get_team_abbreviation, format_matchup, TEAM_ABBREVIATIONS
 

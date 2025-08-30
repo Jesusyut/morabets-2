@@ -99,6 +99,28 @@
   const pct = (x)=> Math.round((Number(x)||0)*100);
   function americanToProb(odds){ if(odds==null) return 0; const o=Number(odds); if(!isFinite(o)||o===0) return 0; return o>0?100/(o+100):(-o)/(100-o); }
 
+  function mapStatForContext(s){
+    const t = String(s||'').toLowerCase();
+    const m = {
+      // batter stats
+      "hits":"batter_hits",
+      "total_bases":"batter_total_bases",
+      "tb":"batter_total_bases",
+      "home_runs":"batter_home_runs",
+      "runs":"batter_runs",
+      "rbi":"batter_runs_batted_in",
+      "walks":"batter_walks",
+      "stolen_bases":"batter_stolen_bases",
+      // pitching (if you show these)
+      "strikeouts":"pitcher_strikeouts",
+      "earned_runs":"pitcher_earned_runs",
+      "hits_allowed":"pitcher_hits_allowed",
+      "outs":"pitcher_outs",
+      "walks_allowed":"pitcher_walks"
+    };
+    return m[t] || s;
+  }
+
   function flatten(data){
     if(Array.isArray(data)) return data;
     if(data && typeof data==='object'){
@@ -214,9 +236,10 @@
     kpi.innerHTML = '';
     modal.style.display = 'flex';
 
+    const mapped = mapStatForContext(stat);
     const qs = new URLSearchParams({
       player_name: player || '',
-      stat_type: stat || '',
+      stat_type: mapped || '',
       threshold: (line ?? 1).toString()
     });
     const tryUrls = [
