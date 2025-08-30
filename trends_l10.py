@@ -115,13 +115,22 @@ def _resolve_player_id(name: str) -> int:
     raise last_err or RuntimeError(f"player not found: {name}")
 
 def resolve_mlb_player_id(name: str) -> Optional[int]:
-    """Wrapper for backward compatibility - returns None on failure instead of raising"""
-    if not name: return None
+    if not name:
+        return None
     ck = f"l10:pid:{name.lower()}"
     hit = _get(ck, 7*24*3600)
-    if hit is not None: return hit
+    if hit is not None:
+        return hit
     try:
-        pid = _resolve_player_id(name)
+        # EXACT endpoint from your working file:
+        r = requests.get(
+            f"{MLB_STATS_API}/people/search",
+            params={"names": name},
+            timeout=STATS_TIMEOUT,
+        )
+        r.raise_for_status()
+        people = (r.json() or {}).get("people") or []
+        pid = int(people[0]["id"]) if people else None
         _set(ck, pid, 7*24*3600)
         return pid
     except Exception as e:
@@ -131,13 +140,23 @@ def resolve_mlb_player_id(name: str) -> Optional[int]:
 
 def _game_logs(player_id: int, group: str, season: Optional[int] = None) -> List[Dict[str, Any]]:
     season = season or datetime.utcnow().year
-    url = f"{MLB_STATS_API}/people/{player_id}"
-    params = {"hydrate": f"stats(group=[{group}],type=[gameLog],season={season})"}
-    r = requests.get(url, params=params, timeout=STATS_TIMEOUT)
+    # EXACT endpoint from your working file:
+    r = requests.get(
+        f"{MLB_STATS_API}/people/{player_id}/stats",
+        params={"stats": "gameLog", "group": group, "season": season},
+        timeout=STATS_TIMEOUT,
+    )
     r.raise_for_status()
     data = r.json() or {}
-    stats = ((data.get("people") or [{}])[0].get("stats") or [])
-    return (stats[0].get("splits") or []) if stats else []
+    splits = (((data.get("stats") or [])[0] or {}).get("splits") or [])
+    out: List[Dict[str, Any]] = []
+    for s in splits:
+        d = (s.get("date") or s.get("gameDate") or "")
+        st = (s.get("stat") or {})
+        out.append({"date": d, "stat": st})
+    # newest first
+    out.sort(key=lambda x: x["date"], reverse=True)
+    return out
 
 def _val(split: Dict[str, Any], stat_key: str) -> Optional[float]:
     st = split.get("stat") or {}
@@ -154,10 +173,8 @@ def _val(split: Dict[str, Any], stat_key: str) -> Optional[float]:
 def compute_l10(name: str, stat_key: str, line: float, lookback: int = 10) -> Optional[Dict[str, Any]]:
     stat_key = _canon(stat_key)
     if not name or line is None: return None
-    try:
-        pid = _resolve_player_id(name)
-    except Exception:
-        return None
+    pid = resolve_mlb_player_id(name)
+    if not pid: return None
     ck = f"l10:trend:{pid}:{stat_key}:{line}"
     hit = _get(ck, 30*60)
     if hit is not None: return hit
