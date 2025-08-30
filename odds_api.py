@@ -11,7 +11,7 @@ from copy import deepcopy
 from typing import Dict, Any, List, Tuple, Optional
 from contextual import get_contextual_hit_rate
 from fantasy import get_fantasy_hit_rate
-from probability import american_to_implied, fair_probs_from_two_sided, fair_odds_from_prob, american_to_prob, no_vig_two_way
+from novig import american_to_prob, novig_two_way as no_vig_two_way
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,15 @@ PREFERRED_BOOKMAKER_KEYS: List[str] = [
 ]
 
 SELECTED_BOOKS = {"draftkings", "fanduel", "betmgm"}  # keep small to reduce noise
+
+def fair_probs_from_two_sided(over_am, under_am):
+    """Return (p_over, p_under) no-vig from two American prices."""
+    return no_vig_two_way(int(over_am), int(under_am))
+
+def fair_odds_from_prob(p: float) -> int:
+    """Convert probability to American odds."""
+    if p <= 0 or p >= 1: return 0
+    return int(round(-100 * p / (1 - p))) if p >= 0.5 else int(round(100 * (1 - p) / p))
 
 def best_two_sided_prices(prices):
     """Find best home/away odds from list of price dicts"""
@@ -120,54 +129,7 @@ def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str):
                     sidebook[key][side] = {"price": int(price), "book": book_name}
     return sidebook
 
-def _norm_point(val) -> Optional[str]:
-    """Normalize prop line so '0.5' pairs with '0.50' (3 dp string)."""
-    if val is None:
-        return None
-    try:
-        return f"{Decimal(str(val)).quantize(Decimal('0.001'))}"
-    except (InvalidOperation, ValueError, TypeError):
-        s = str(val).strip()
-        return s if s else None
 
-def _resolve_side_and_player(name: Optional[str], desc: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Books flip fields; return ('over'|'under', player_name).
-    """
-    n = (name or "").strip(); d = (desc or "").strip()
-    ln, ld = n.lower(), d.lower()
-    if ln in ("over","under"): return ln, d or n
-    if ld in ("over","under"): return ld, n or d
-    if "over" in ln:  return "over",  d or n
-    if "under" in ln: return "under", d or n
-    if "over" in ld:  return "over",  n or d
-    if "under" in ld: return "under", n or d
-    return None, None
-
-def _pair_outcomes(bookmakers: List[Dict[str, Any]], stat_key: str) -> Dict[Tuple[str, str, Optional[str]], Dict[str, Optional[Dict[str, Any]]]]:
-    """
-    (player, stat, point_key) -> { 'over': {price, book} | None, 'under': {...} | None }
-    Prefer FanDuel if duplicates.
-    """
-    sidebook = defaultdict(lambda: {"over": None, "under": None})
-    for bk in bookmakers or []:
-        book_name = (bk.get("key") or bk.get("title") or "").strip().lower()
-        for m in bk.get("markets") or []:
-            if m.get("key") != stat_key:
-                continue
-            for o in m.get("outcomes") or []:
-                side, player = _resolve_side_and_player(o.get("name"), o.get("description"))
-                if side not in ("over","under") or not player:
-                    continue
-                price = o.get("price")
-                if price is None:
-                    continue
-                point = _norm_point(o.get("point"))
-                key = (player, stat_key, point)
-                keep = sidebook[key][side] is None or sidebook[key][side].get("book") != "fanduel"
-                if keep:
-                    sidebook[key][side] = {"price": int(price), "book": book_name}
-    return sidebook
 
 def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
     """
@@ -197,21 +159,21 @@ def _attach_fair_or_implied(row: Dict[str, Any]) -> None:
             return
 
     if over_am is not None and under_am is None:
-        p = american_to_implied(over_am)
+        p = american_to_prob(over_am)
         row["fair"]["prob"]["over"]  = round(p, 4)
         row["fair"]["prob"]["under"] = round(1.0 - p, 4)
         row["fair"]["book"] = (shop.get("over") or {}).get("book") or (row.get("bookmaker") or "")
         return
 
     if under_am is not None and over_am is None:
-        p = american_to_implied(under_am)
+        p = american_to_prob(under_am)
         row["fair"]["prob"]["under"] = round(p, 4)
         row["fair"]["prob"]["over"]  = round(1.0 - p, 4)
         row["fair"]["book"] = (shop.get("under") or {}).get("book") or (row.get("bookmaker") or "")
         return
 
     if fallback is not None:
-        p = american_to_implied(fallback)
+        p = american_to_prob(fallback)
         row["fair"]["prob"]["over"]  = round(p, 4)
         row["fair"]["prob"]["under"] = round(1.0 - p, 4)
         row["fair"]["book"] = row.get("bookmaker") or ""
@@ -283,23 +245,23 @@ def parse_game_data():
     start_time = now.replace(microsecond=0).isoformat() + "Z"
     end_time = future.replace(microsecond=0).isoformat() + "Z"
 
-    if not ODDS_API_KEY:
+    if not API_KEY:
         print("[ERROR] ODDS_API_KEY is not set")
         return []
 
     # Try preferred sportsbooks first
     try:
-        print(f"[DEBUG] Fetching moneylines from preferred sportsbooks: {PREFERRED_SPORTSBOOKS}")
+        print(f"[DEBUG] Fetching moneylines from preferred sportsbooks: {PREFERRED_BOOKMAKER_KEYS}")
         response = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/odds",
+            f"{BASE}/v4/sports/baseball_mlb/odds",
             params={
-                "apiKey": ODDS_API_KEY,
+                "apiKey": API_KEY,
                 "regions": "us",
                 "markets": "h2h",
                 "oddsFormat": "american",
                 "commenceTimeFrom": start_time,
                 "commenceTimeTo": end_time,
-                "bookmakers": ",".join(PREFERRED_SPORTSBOOKS)
+                "bookmakers": ",".join(PREFERRED_BOOKMAKER_KEYS)
             },
             timeout=20
         )
@@ -320,9 +282,9 @@ def parse_game_data():
     try:
         print("[DEBUG] Fetching moneylines from all sportsbooks")
         response = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/odds",
+            f"{BASE}/v4/sports/baseball_mlb/odds",
             params={
-                "apiKey": ODDS_API_KEY,
+                "apiKey": API_KEY,
                 "regions": "us",
                 "markets": "h2h",
                 "oddsFormat": "american",
@@ -348,21 +310,21 @@ def get_matchup_map():
     start_time = now.replace(microsecond=0).isoformat() + "Z"
     end_time = future.replace(microsecond=0).isoformat() + "Z"
 
-    if not ODDS_API_KEY:
+    if not API_KEY:
         print("[ERROR] ODDS_API_KEY is not set")
         return {}
 
     try:
         response = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/odds",
+            f"{BASE}/v4/sports/baseball_mlb/odds",
             params={
-                "apiKey": ODDS_API_KEY,
+                "apiKey": API_KEY,
                 "regions": "us",
                 "markets": "h2h",
                 "oddsFormat": "american",
                 "commenceTimeFrom": start_time,
                 "commenceTimeTo": end_time,
-                "bookmakers": ",".join(PREFERRED_SPORTSBOOKS)
+                "bookmakers": ",".join(PREFERRED_BOOKMAKER_KEYS)
             },
             timeout=20
         )
@@ -401,22 +363,22 @@ def get_mlb_totals_odds():
     start_time = now.replace(microsecond=0).isoformat() + "Z"
     end_time = future.replace(microsecond=0).isoformat() + "Z"
 
-    if not ODDS_API_KEY:
+    if not API_KEY:
         print("[ERROR] ODDS_API_KEY is not set")
         return []
 
     try:
         print("[DEBUG] Fetching MLB totals odds")
         response = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/odds",
+            f"{BASE}/v4/sports/baseball_mlb/odds",
             params={
-                "apiKey": ODDS_API_KEY,
+                "apiKey": API_KEY,
                 "regions": "us",
                 "markets": "totals",
                 "oddsFormat": "american",
                 "commenceTimeFrom": start_time,
                 "commenceTimeTo": end_time,
-                "bookmakers": ",".join(PREFERRED_SPORTSBOOKS)
+                "bookmakers": ",".join(PREFERRED_BOOKMAKER_KEYS)
             },
             timeout=20
         )
@@ -575,58 +537,6 @@ def get_mlb_game_environment_map():
     print(f"[INFO] Classified {len(env_map)} game environments with favored teams")
     return env_map
 
-    # Try preferred sportsbooks first
-    try:
-        print(f"[DEBUG] Fetching moneylines from preferred sportsbooks: {PREFERRED_SPORTSBOOKS}")
-        response = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/odds",
-            params={
-                "apiKey": ODDS_API_KEY,
-                "regions": "us",
-                "markets": "h2h",
-                "oddsFormat": "american",
-                "commenceTimeFrom": start_time,
-                "commenceTimeTo": end_time,
-                "bookmakers": ",".join(PREFERRED_SPORTSBOOKS)
-            },
-            timeout=20
-        )
-        response.raise_for_status()
-        data = response.json()
-        print(f"[INFO] Retrieved {len(data)} moneyline matchups from preferred sportsbooks")
-        
-        # If we got good data, return it
-        if data and len(data) > 0:
-            return data
-        else:
-            print("[WARNING] No moneylines from preferred sportsbooks, falling back to all sportsbooks")
-            
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch odds from preferred sportsbooks: {e}, falling back to all sportsbooks")
-
-    # Fallback to all sportsbooks
-    try:
-        print("[DEBUG] Fetching moneylines from all sportsbooks")
-        response = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/odds",
-            params={
-                "apiKey": ODDS_API_KEY,
-                "regions": "us",
-                "markets": "h2h",
-                "oddsFormat": "american",
-                "commenceTimeFrom": start_time,
-                "commenceTimeTo": end_time
-            },
-            timeout=20
-        )
-        response.raise_for_status()
-        data = response.json()
-        print(f"[INFO] Retrieved {len(data)} moneyline matchups from all sportsbooks")
-        return data
-    except Exception as e:
-        print(f"[ERROR] Failed to fetch odds from all sportsbooks: {e}")
-        return []
-
 def fetch_player_props():
     """Fetch player props with preferred sportsbooks first, fallback to all if needed"""
     now = datetime.utcnow()
@@ -634,15 +544,15 @@ def fetch_player_props():
     start_time = now.replace(microsecond=0).isoformat() + "Z"
     end_time = future.replace(microsecond=0).isoformat() + "Z"
 
-    if not ODDS_API_KEY:
+    if not API_KEY:
         print("[ERROR] ODDS_API_KEY is not set")
         return []
 
     try:
         event_resp = requests.get(
-            f"{BASE_URL}/sports/baseball_mlb/events",
+            f"{BASE}/v4/sports/baseball_mlb/events",
             params={
-                "apiKey": ODDS_API_KEY,
+                "apiKey": API_KEY,
                 "commenceTimeFrom": start_time,
                 "commenceTimeTo": end_time
             },
