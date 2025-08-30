@@ -145,8 +145,12 @@
     const under = pct(p?.fair?.prob?.under ?? 0);
     const src = (p?.fair?.book || p?.shop || '').toString().toUpperCase();
     const stat = (p?.stat ?? '').toString();
+    
+    // Include meta.l10 data if available
+    const metaL10 = p?.meta?.l10 ? ` data-meta-l10="${esc(JSON.stringify(p.meta.l10))}"` : '';
+    
     return `
-      <div class="card" data-name="${esc((p.player||'').toLowerCase())}" data-stat="${esc(stat.toLowerCase())}">
+      <div class="card" data-name="${esc((p.player||'').toLowerCase())}" data-stat="${esc(stat.toLowerCase())}"${metaL10}>
         <div class="row">
           <div class="muted">${esc(p.matchup || '')}</div>
           <div class="pill">${esc(stat)} ${esc(p.line)}</div>
@@ -231,14 +235,23 @@
     kpi.style.display = 'none'; kpi.innerHTML = '';
     modal.style.display = 'flex';
 
-    // Check if we have cached data first
+    // Check if we have cached data first (from server meta.l10 or frontend dataset.l10)
     const card = Array.from(document.querySelectorAll('.card'))
       .find(el => el.querySelector('.pill')?.textContent?.includes(`${stat} ${line}`) &&
                   el.querySelector('div[style*="font-weight:700"]')?.textContent === player);
-    const cached = card?.dataset?.l10 ? JSON.parse(card.dataset.l10) : null;
+    
+    // Check frontend cache first, then server meta.l10
+    let cached = null;
+    if (card?.dataset?.l10) {
+      cached = JSON.parse(card.dataset.l10);
+    } else if (card?.getAttribute('data-meta-l10')) {
+      // Server-provided meta.l10 data
+      cached = JSON.parse(card.getAttribute('data-meta-l10'));
+    }
+    
     if (cached) {
-      const rate = Number(cached.hit_rate || 0);
-      const size = Number(cached.sample_size || 10);
+      const rate = Number(cached.hit_rate || cached.rate_over || 0);
+      const size = Number(cached.sample_size || cached.games || 10);
       const conf = cached.confidence || '';
       body.innerHTML = `Over in <b>${Math.round(rate*size)}</b> of last <b>${size}</b> games (${Math.round(rate*100)}%)`;
       kpi.style.display = 'flex';

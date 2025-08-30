@@ -1138,16 +1138,17 @@ def get_props():
             total_props = sum(len(props) for props in grouped.values())
             logger.info(f"[NOVIG] Built {total_props} props from {len(raw_offers)} offers across {len(grouped)} matchups")
 
-            # optional L10 annotate—doesn't break response if fails
-            include_l10 = (request.args.get("include_l10", os.getenv("ENABLE_L10","false")).lower() in ("1","true","yes","on"))
-            l10_lookback = int(request.args.get("l10_lookback", os.getenv("L10_LOOKBACK","10")))
-            
-            if include_l10:
-                try:
-                    grouped = annotate_props_with_l10(grouped, league=league, lookback=l10_lookback)
-                    logger.info(f"[L10] Annotated {total_props} props with L10 trends")
-                except Exception as e:
-                    logger.warning(f"[L10] annotate failed: {e}")
+            # L10 annotate for MLB (enabled by default)
+            if (request.args.get("league","").lower() == "mlb") and (os.getenv("L10_ENABLE","1") == "1"):
+                include_l10 = (request.args.get("include_l10", "1").lower() in ("1","true","yes","on"))
+                l10_lookback = int(request.args.get("l10_lookback", os.getenv("L10_LOOKBACK","10")))
+                
+                if include_l10:
+                    try:
+                        grouped = annotate_props_with_l10(grouped, league=league, lookback=l10_lookback)
+                        logger.info(f"[L10] Annotated {total_props} props with L10 trends")
+                    except Exception as e:
+                        logger.warning(f"[L10] annotate failed: {e}")
 
             # server-side probability filter to keep junk out of UI lists
             if min_prob > 0:
@@ -1333,13 +1334,28 @@ def labels_endpoint():
 def contextual_hit_rate():
     player = request.args.get("player_name") or request.args.get("player")
     stat   = request.args.get("stat_type") or request.args.get("stat")
-    th     = float(request.args.get("threshold", 1))
-    if not (player and stat):
-        return jsonify({"error":"missing player_name/stat_type"}), 400
+    th     = request.args.get("threshold", None)
+    if not (player and stat and th is not None):
+        return {"error":"missing player_name/stat_type/threshold"}, 400
     try:
-        return jsonify(get_contextual_hit_rate_cached(player, stat, th))
-    except Exception as e:
-        return jsonify({"error":"mlb_trend_failed","detail":str(e)}), 502
+        th = float(th)
+    except:
+        return {"error":"bad threshold"}, 400
+
+    # compute via MLB-only cached function (in trends_l10.py)
+    res = compute_l10(player, stat, th, lookback=int(os.getenv("L10_LOOKBACK","10")))
+    if not res:
+        return {"error":"no_l10_data"}, 404
+
+    # Map to modal response fields expected by FE
+    return {
+        "hit_rate":    float(res["rate_over"]),
+        "sample_size": int(res["games"]),
+        "threshold":   th,
+        # simple confidence label (keep identical to your previous behavior)
+        "confidence":  ("high" if (res["games"]>=8 and res["rate_over"]>=0.60)
+                        else ("medium" if (res["games"]>=6 and res["rate_over"]>=0.5) else "low"))
+    }
 
 
 @app.post("/contextual/hit_rates")
