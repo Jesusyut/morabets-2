@@ -170,3 +170,19 @@ def fetch_nfl_player_props(hours_ahead: int = 48) -> List[Dict[str, Any]]:
         return ((p.get("fair") or {}).get("prob") or {}).get("over") or 0.0
     all_props.sort(key=keyfn, reverse=True)
     return all_props
+
+# ---- Back-compat alias for legacy import paths ----
+def fetch_nfl_props(*args, **kwargs):
+    """
+    Backwards-compatible wrapper. Older app.py imports `fetch_nfl_props`,
+    new code uses `fetch_nfl_player_props`. Keep both.
+    """
+    return fetch_nfl_player_props(*args, **kwargs)
+
+# Optional explicit export list (harmless if not used)
+try:
+    __all__ = list(set((__all__ if '__all__' in globals() else []) + [
+        'fetch_nfl_player_props', 'fetch_nfl_props'
+    ]))
+except Exception:
+    pass

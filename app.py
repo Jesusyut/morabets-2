@@ -28,6 +28,7 @@ from pairing import build_props_novig
 from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id, get_last_10_trend  # NEW
 from props_ncaaf import fetch_ncaaf_player_props
 from nfl_odds_api import fetch_nfl_player_props
+from props_ufc import fetch_ufc_markets
 
 def _norm_league(s: str | None) -> str:
     t = (s or "").strip().lower()
@@ -1141,6 +1142,11 @@ def get_props():
             if league == "nfl":
                 props = fetch_nfl_player_props()
                 return jsonify({"league":"nfl","props": props})
+            
+            # UFC branch
+            if league in ("ufc","mma"):
+                fights = fetch_ufc_markets(date=date_str)
+                return jsonify({"league":"ufc","fights": fights})
             
             # fallback if unknown
             raise ValueError(f"Unsupported league: {league_in}")
