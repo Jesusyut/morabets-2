@@ -130,17 +130,7 @@ STAT_KEY_MAP = {
     "pitcher_walks": "baseOnBalls",
     "pitcher_outs": "outs",
     "batter_fantasy_score": "fantasyPoints",
-    "pitcher_fantasy_score": "fantasyPoints",
-    # legacy batter names
-    "hits": "hits",
-    "total_bases": "totalBases",
-    "home_runs": "homeRuns",
-    "runs": "runs",
-    "rbi": "rbi",
-    "walks": "baseOnBalls",
-    "stolen_bases": "stolenBases",
-    "strikeouts": "strikeOuts",
-    "tb": "totalBases",
+    "pitcher_fantasy_score": "fantasyPoints"
 }
 
 def get_player_id(player_name):
