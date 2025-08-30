@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Mora Bets</title>
+  <link rel="preconnect" href="https://www.morabets.com">
   <style>
     :root{--bg:#0f1420;--card:#161b28;--stroke:#2b3245;--text:#e6e9f2;--muted:#9aa4bf;--green:#2dd36f;--amber:#f9d65a;}
     html,body{background:var(--bg);color:var(--text);margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
@@ -11,6 +12,11 @@
     .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
     h1{margin:0;font-size:22px}
     .muted{color:var(--muted)}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+    .tab{background:transparent;color:var(--muted);border:1px solid var(--stroke);padding:8px 12px;border-radius:999px;cursor:pointer}
+    .tab.active{color:var(--text);border-color:#7c6dff;box-shadow:0 0 0 1px #7c6dff inset}
+    .search{width:100%;max-width:420px;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--stroke);color:var(--text)}
+    .toolbar{display:flex;gap:8px;align-items:center;margin:10px 0 18px}
     .grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:14px}
     @media(min-width:900px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
     .card{background:var(--card);border:1px solid var(--stroke);border-radius:14px;padding:14px}
@@ -20,8 +26,13 @@
     .under{color:var(--amber)}
     .tiny-link{display:inline-flex;align-items:center;gap:6px;color:#9dd0ff;font-size:12px;cursor:pointer;text-decoration:none;border-bottom:1px dashed #2b3245}
     .tiny-link:hover{color:#cfe6ff}
+
     /* big loading overlay */
-    .loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(10,14,24,.85);backdrop-filter:saturate(140%) blur(2px);z-index:10;flex-direction:column;text-align:center;padding:24px}
+    .loading{
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+      background:rgba(10,14,24,.85);backdrop-filter:saturate(140%) blur(2px);
+      z-index:10;flex-direction:column;text-align:center;padding:24px
+    }
     .spinner{width:44px;height:44px;border:3px solid #2b3245;border-top-color:#9dd0ff;border-radius:50%;animation:spin 0.9s linear infinite;margin-bottom:12px}
     @keyframes spin{to{transform:rotate(360deg)}}
   </style>
@@ -39,21 +50,37 @@
       <div class="muted"><span id="count">–</span> props</div>
     </div>
 
+    <!-- League tabs -->
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-league="mlb">MLB</button>
+      <button class="tab" data-league="nfl">NFL</button>
+      <button class="tab" data-league="nba">NBA</button>
+      <button class="tab" data-league="nhl">NHL</button>
+      <button class="tab" data-league="ufc">UFC</button>
+      <button class="tab" data-league="ncaa">NCAA</button>
+    </div>
+
+    <div class="toolbar">
+      <input id="q" class="search" placeholder="Search players or stats…" />
+    </div>
+
     <div id="props" class="grid"></div>
   </div>
 
   <!-- trend modal -->
-  <div id="trendModal" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px">
-    <div style="background:#0e1422;border:1px solid #2b3245;border-radius:14px;max-width:520px;width:100%;padding:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+  <div id="trendModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="trendTitle" style="position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;padding:20px">
+    <div class="modal-card" style="background:#0e1422;border:1px solid #2b3245;border-radius:14px;max-width:520px;width:100%;padding:16px">
+      <div class="modal-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div>
           <div id="trendTitle" style="font-weight:700"></div>
           <div id="trendSub" class="muted" style="font-size:12px"></div>
         </div>
-        <button onclick="trendClose()" style="background:transparent;color:#9aa4bf;border:1px solid #2b3245;padding:6px 10px;border-radius:8px;cursor:pointer">Close</button>
+        <button class="close" onclick="trendClose()" style="background:transparent;color:#9aa4bf;border:1px solid #2b3245;padding:6px 10px;border-radius:8px;cursor:pointer">Close</button>
       </div>
       <div id="trendBody" class="muted">Loading…</div>
-      <div id="trendKPI" style="display:none;gap:10px;flex-wrap:wrap;margin-top:8px"></div>
+      <div class="kpi" id="trendKPI" style="display:none;gap:10px;flex-wrap:wrap;margin-top:8px">
+        <!-- KPIs injected -->
+      </div>
     </div>
   </div>
 
@@ -61,7 +88,11 @@
 (async function(){
   const grid = document.getElementById('props');
   const countEl = document.getElementById('count');
+  const q = document.getElementById('q');
+  const tabs = document.getElementById('tabs');
   const loader = document.getElementById('loading');
+
+  let league = 'mlb';
   const today = new Date().toISOString().slice(0,10);
 
   const esc = (s)=> (s??'').toString().replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[m]));
@@ -94,10 +125,8 @@
     const under = pct(p?.fair?.prob?.under ?? 0);
     const src = (p?.fair?.book || p?.shop || '').toString().toUpperCase();
     const stat = (p?.stat ?? '').toString();
-    // embed a small l10 hint if present (for emergency FE fallback)
-    const l10 = p?.meta?.l10 ? ` data-l10="${esc(JSON.stringify(p.meta.l10))}"` : '';
     return `
-      <div class="card"${l10} data-name="${esc((p.player||'').toLowerCase())}" data-stat="${esc(stat.toLowerCase())}">
+      <div class="card" data-name="${esc((p.player||'').toLowerCase())}" data-stat="${esc(stat.toLowerCase())}">
         <div class="row">
           <div class="muted">${esc(p.matchup || '')}</div>
           <div class="pill">${esc(stat)} ${esc(p.line)}</div>
@@ -114,9 +143,10 @@
   }
 
   async function fetchAllProps(){
+    // Try with date param first, then without.
     const urls = [
-      `/player_props?league=mlb&date=${today}`,
-      `/player_props?league=mlb`
+      `/player_props?league=${league}&date=${today}`,
+      `/player_props?league=${league}`
     ];
     for(const url of urls){
       try{
@@ -129,20 +159,45 @@
     return [];
   }
 
-  loader.style.display = 'flex';
-  const all = await fetchAllProps();
-  all.sort((a,b)=> scoreOver(b) - scoreOver(a));
-  countEl.textContent = all.length.toLocaleString();
-  grid.innerHTML = all.length ? all.map(renderCard).join('') : `<div class="card"><div class="muted">No props found.</div></div>`;
-  loader.style.display = 'none';
+  async function loadLeague(newLeague){
+    league = newLeague || league;
+    // activate tab
+    Array.from(tabs.querySelectorAll('.tab')).forEach(b=> b.classList.toggle('active', b.dataset.league===league));
+    loader.style.display = 'flex';
+    grid.innerHTML = '';
+    countEl.textContent = '–';
 
-  // trend modal plumbing
-  window.trendClose = function(){ document.getElementById('trendModal').style.display = 'none'; };
-  function mapStatForContext(s){
-    const t = String(s||'').toLowerCase();
-    const m = { "hits":"batter_hits", "total_bases":"batter_total_bases", "tb":"batter_total_bases" };
-    return m[t] || s;
+    const all = await fetchAllProps();
+    // highest OVER first
+    all.sort((a,b)=> scoreOver(b) - scoreOver(a));
+
+    countEl.textContent = all.length.toLocaleString();
+    grid.innerHTML = all.length ? all.map(renderCard).join('') : `<div class="card"><div class="muted">No props found.</div></div>`;
+    loader.style.display = 'none';
   }
+
+  // search filter
+  q.addEventListener('input', ()=>{
+    const term=(q.value||'').trim().toLowerCase();
+    for(const el of grid.children){
+      if(!term){ el.style.display=''; continue; }
+      const name=el.getAttribute('data-name')||'';
+      const stat=el.getAttribute('data-stat')||'';
+      el.style.display=(name.includes(term)||stat.includes(term))?'':'none';
+    }
+  });
+
+  // tabs
+  tabs.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.tab'); if(!btn) return;
+    if(btn.dataset.league === league) return;
+    loadLeague(btn.dataset.league);
+  });
+
+  // ---- Trend modal plumbing ----
+  window.trendClose = function(){
+    document.getElementById('trendModal').style.display = 'none';
+  };
   window.showTrend = async function(encoded){
     const payload = JSON.parse(decodeURIComponent(encoded));
     const {player, stat, line} = payload || {};
@@ -155,33 +210,41 @@
     title.textContent = player || '';
     sub.textContent = `${stat ?? ''} ${line ?? ''}`;
     body.textContent = 'Loading…';
-    kpi.style.display = 'none'; kpi.innerHTML = '';
+    kpi.style.display = 'none';
+    kpi.innerHTML = '';
     modal.style.display = 'flex';
 
-    const qs = new URLSearchParams({ player_name: player||'', stat_type: mapStatForContext(stat)||'', threshold: (line??1).toString() });
-    const tryUrls = [ `/contextual/hit_rate?${qs}`, `/contextual/hit-rate?${qs}`, `/contextual?${qs}` ];
+    const qs = new URLSearchParams({
+      player_name: player || '',
+      stat_type: stat || '',
+      threshold: (line ?? 1).toString()
+    });
+    const tryUrls = [
+      `/contextual/hit_rate?${qs.toString()}`,
+      `/contextual/hit-rate?${qs.toString()}`,
+      `/contextual?${qs.toString()}`
+    ];
     let resp = null;
-    for(const u of tryUrls){ try{ const r = await fetch(u); if(r.ok){ resp = await r.json(); break; } }catch(e){} }
-
-    if(!resp){
-      // FE fallback using embedded meta.l10 if present
-      const card = Array.from(document.querySelectorAll('.card')).find(el => el.querySelector('.pill')?.textContent?.includes(`${stat} ${line}`) && el.querySelector('div[style*="font-weight:700"]')?.textContent === player);
-      const meta = card?.getAttribute('data-l10');
-      if(meta){
-        const m = JSON.parse(meta); const rate = Number(m.rate_over||0); const size = Number(m.games||10);
-        body.innerHTML = `Over in <b>${Math.round(rate*size)}</b> of last <b>${size}</b> games (${Math.round(rate*100)}%)`;
-        return;
-      }
-      body.textContent='Could not load last 10 games.'; return;
+    for(const u of tryUrls){
+      try{ const r = await fetch(u); if(r.ok){ resp = await r.json(); break; } }catch(e){}
     }
+    if(!resp){ body.textContent='Could not load last 10 games.'; return; }
 
     const rate = Number(resp.hit_rate ?? 0);
     const size = Number(resp.sample_size ?? 10);
     const conf = resp.confidence || '';
+
     body.innerHTML = `Over in <b>${Math.round(rate*size)}</b> of last <b>${size}</b> games (${Math.round(rate*100)}%)`;
     kpi.style.display = 'flex';
-    kpi.innerHTML = `<div>Confidence: <b>${conf}</b></div><div>Threshold: <b>${(resp.threshold ?? line ?? 1)}</b></div>${resp.pitcher_hand ? `<div>Pitcher hand: <b>${resp.pitcher_hand}</b></div>`:''}`;
+    kpi.innerHTML = `
+      <div>Confidence: <b>${esc(conf)}</b></div>
+      <div>Threshold: <b>${esc((resp.threshold ?? line ?? 1).toString())}</b></div>
+      ${resp.pitcher_hand ? `<div>Pitcher hand: <b>${esc(resp.pitcher_hand)}</b></div>`:''}
+    `;
   };
+
+  // initial load
+  loadLeague('mlb');
 })();
 </script>
 </body>
