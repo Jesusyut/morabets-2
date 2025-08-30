@@ -36,3 +36,41 @@ def label_matchups_from_featured(markets: Dict[str, Any]) -> Dict[str, Any]:
         out["high_scoring"] = (po >= 0.55)
         out["totals_point"] = totals.get("point")
     return out
+
+# --- Back-compat shim expected by app.py ---
+# Older code imports enrich_nfl_props(props) to annotate props in-place.
+# Until we wire real matchup labels (moneyline/totals feed), make it a no-op pass-through.
+
+import logging as _logging
+_log = _logging.getLogger("nfl_enrichment")
+if not _log.handlers:
+    _logging.basicConfig(level=_logging.INFO)
+
+def enrich_nfl_props(props, *args, **kwargs):
+    """
+    Backwards-compatible interface: accept a list of prop rows and return a list.
+    Currently a no-op so app.py won't crash. We can later call label_matchups_from_featured()
+    if you pass featured H2H/Totals per matchup.
+    """
+    try:
+        # If caller provided featured market data, you can enable this block later:
+        # featured = kwargs.get("featured_markets_by_matchup")
+        # if isinstance(featured, dict):
+        #     # Example: attach 'no_vig_favorite' / 'high_scoring' to each row's meta
+        #     for row in props or []:
+        #         mu = row.get("matchup")
+        #         if mu in featured:
+        #             labels = label_matchups_from_featured(featured[mu])
+        #             row.setdefault("meta", {}).update(labels)
+        return props
+    except Exception as e:
+        _log.warning("enrich_nfl_props pass-through failed: %s", e)
+        return props
+
+# be explicit (harmless if __all__ not used)
+try:
+    __all__ = list(set((__all__ if '__all__' in globals() else []) + [
+        "label_matchups_from_featured", "enrich_nfl_props"
+    ]))
+except Exception:
+    pass
