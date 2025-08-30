@@ -1,11 +1,34 @@
 # trends_l10.py
 import os, time, json, logging, requests
+import re
+from functools import lru_cache
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 
 LOG = logging.getLogger(__name__)
 MLB_STATS_API = "https://statsapi.mlb.com/api/v1"
+MLB_PEOPLE_SEARCH = "https://statsapi.mlb.com/api/v1/people/search"  # correct endpoint
 STATS_TIMEOUT = float(os.getenv("STATSAPI_TIMEOUT", "6"))
+
+_SUFFIXES = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
+def _name_variants(name: str):
+    n = name.strip()
+    yield n  # original
+
+    # de-dot initials: "C.J. Abrams" -> "CJ Abrams"
+    yield re.sub(r"\b([A-Z])\.\s*([A-Z])\.\b", r"\1\2", n)          # C.J. -> CJ
+    yield re.sub(r"\b([A-Z])\.\b", r"\1", n)                         # A. -> A
+
+    # remove periods in entire name (Glasnow etc unchanged, "Jr." -> "Jr")
+    yield n.replace(".", "")
+
+    # drop common suffixes (Jr., III, etc.)
+    parts = n.replace(".", "").split()
+    if parts and parts[-1].lower() in _SUFFIXES:
+        yield " ".join(parts[:-1])
+
+    # collapse multiple spaces
+    yield re.sub(r"\s{2,}", " ", n)
 
 # --- cache (Redis -> mem) ---
 try:
@@ -58,16 +81,47 @@ STAT_ALIASES = {
 def _canon(stat_key: str) -> str:
     return STAT_ALIASES.get((stat_key or "").lower(), (stat_key or "").lower())
 
+@lru_cache(maxsize=1024)
+def _resolve_player_id(name: str) -> int:
+    """
+    Robust MLB resolver:
+      - uses /people/search?names=...
+      - tries several sanitized variants
+      - picks best exact (case-insens) match if multiple
+    """
+    last_err = None
+    for q in dict.fromkeys(_name_variants(name)):  # preserve order, dedupe
+        try:
+            r = requests.get(MLB_PEOPLE_SEARCH, params={"names": q}, timeout=STATS_TIMEOUT)
+            r.raise_for_status()
+            js = r.json() or {}
+            people = js.get("people") or []
+            if not people:
+                continue
+
+            # prefer exact case-insens match on full name
+            lower_q = q.lower()
+            exact = [p for p in people if (p.get("fullName") or "").lower() == lower_q]
+            if exact:
+                return int(exact[0]["id"])
+
+            # otherwise first hit is usually correct for MLB level
+            return int(people[0]["id"])
+        except Exception as e:
+            last_err = e
+            continue
+    # if we get here, all variants failed
+    LOG.warning("[L10] resolve failed %s: %s", name, last_err or "no matches")
+    raise last_err or RuntimeError(f"player not found: {name}")
+
 def resolve_mlb_player_id(name: str) -> Optional[int]:
+    """Wrapper for backward compatibility - returns None on failure instead of raising"""
     if not name: return None
     ck = f"l10:pid:{name.lower()}"
     hit = _get(ck, 7*24*3600)
     if hit is not None: return hit
     try:
-        r = requests.get(f"{MLB_STATS_API}/people", params={"search": name}, timeout=STATS_TIMEOUT)
-        r.raise_for_status()
-        people = (r.json() or {}).get("people") or []
-        pid = int(people[0]["id"]) if people else None
+        pid = _resolve_player_id(name)
         _set(ck, pid, 7*24*3600)
         return pid
     except Exception as e:
@@ -100,8 +154,10 @@ def _val(split: Dict[str, Any], stat_key: str) -> Optional[float]:
 def compute_l10(name: str, stat_key: str, line: float, lookback: int = 10) -> Optional[Dict[str, Any]]:
     stat_key = _canon(stat_key)
     if not name or line is None: return None
-    pid = resolve_mlb_player_id(name)
-    if not pid: return None
+    try:
+        pid = _resolve_player_id(name)
+    except Exception:
+        return None
     ck = f"l10:trend:{pid}:{stat_key}:{line}"
     hit = _get(ck, 30*60)
     if hit is not None: return hit

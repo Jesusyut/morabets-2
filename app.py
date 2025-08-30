@@ -25,7 +25,7 @@ from enrichment import load_props_from_file
 from probability import implied_probability, calculate_edge, kelly_bet_size, calculate_parlay_edge
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
-from trends_l10 import annotate_props_with_l10, compute_l10  # NEW
+from trends_l10 import annotate_props_with_l10, compute_l10, _resolve_player_id  # NEW
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -2655,6 +2655,15 @@ init_thread.start()
 # Warm cache on startup
 warm_thread = Thread(target=warm_top_props, daemon=True)
 warm_thread.start()
+
+# Sanity route for player ID resolution
+@app.get("/contextual/_who")
+def who():
+    name = request.args.get("name","Yandy Diaz")
+    try:
+        return {"name": name, "id": _resolve_player_id(name)}
+    except Exception as e:
+        return {"error": str(e)}, 502
 
 # Flask app startup
 if __name__ == "__main__":
