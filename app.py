@@ -27,6 +27,7 @@ from prop_deduplication import deduplicate_props_by_player, get_stat_display_nam
 from pairing import build_props_novig
 from trends_l10 import annotate_props_with_l10, compute_l10  # NEW
 from contextual import get_contextual_hit_rate
+from mlb_trends import last10_rate
 
 from team_abbreviations import get_team_abbreviation, format_matchup, TEAM_ABBREVIATIONS
 
@@ -1328,26 +1329,30 @@ def labels_endpoint():
     return jsonify(labels), 200
 
 
+def cache_key(player, stat, th):
+    return f"ctx:{date.today().isoformat()}:{player}:{stat}:{th}"
+
 @app.route("/contextual/hit_rate")
 def contextual_hit_rate():
     player = request.args.get("player_name") or request.args.get("player")
     stat   = request.args.get("stat_type") or request.args.get("stat")
-    th     = float(request.args.get("threshold", 1))
+    th     = request.args.get("threshold", "1")
     if not (player and stat):
         return jsonify({"error":"missing player_name/stat_type"}), 400
-
-    key = f"ctx:{date.today().isoformat()}:{player}:{stat}:{th}"
+    key = cache_key(player, stat, th)
     cached = redis.get(key)
     if cached:
         return jsonify(json.loads(cached))
-
     try:
-        payload = get_contextual_hit_rate(player, stat, th)  # MLB StatsAPI ONLY
+        payload = last10_rate(player, stat, float(th))
+        redis.setex(key, 6*3600, json.dumps(payload))
+        return jsonify(payload)
     except Exception as e:
-        return jsonify({"error":"mlb_trend_failed","detail":str(e)}), 502
-
-    redis.setex(key, 6*3600, json.dumps(payload))
-    return jsonify(payload)
+        # best-effort stale
+        if cached:
+            stale = json.loads(cached); stale["stale"]=True
+            return jsonify(stale)
+        return jsonify({"error":"contextual_failed","detail":str(e)}), 502
 
 
 def warm_top_props():
@@ -1364,7 +1369,38 @@ def warm_top_props():
     except Exception as e:
         logger.error(f"Cache warming failed: {e}")
 
-
+# Prefetcher: pull player list from /player_props and warm cache
+def warm_trends():
+    try:
+        import requests
+        today = date.today().isoformat()
+        res = requests.get(f"{os.getenv('SELF_BASE','')}/player_props", params={"league":"mlb","date": today}, timeout=8)
+        if not res.ok: return
+        data = res.json()
+        # flatten
+        items = []
+        if isinstance(data, list): items = data
+        elif isinstance(data, dict):
+            for _, arr in data.items():
+                if isinstance(arr, list): items.extend(arr)
+        # unique player+stat+line triples
+        seen = set()
+        for p in items:
+            player = p.get("player"); stat = p.get("stat"); line = p.get("line")
+            if not (player and stat and line is not None): continue
+            k = (player, stat, line)
+            if k in seen: continue
+            seen.add(k)
+            key = cache_key(player, stat, line)
+            if redis.get(key): continue
+            try:
+                payload = last10_rate(player, stat, float(line))
+                redis.setex(key, 6*3600, json.dumps(payload))
+                time.sleep(0.05)  # be polite
+            except Exception:
+                continue
+    except Exception:
+        pass
 
 
 # --- Performance optimization functions ---
@@ -1944,6 +1980,9 @@ scheduler.add_job(
     name="System Health Check",
     replace_existing=True
 )
+
+# start scheduler (every 10 minutes)
+scheduler.add_job(warm_trends, "interval", minutes=10, id="warm_trends", replace_existing=True)
 
 
 
