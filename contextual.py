@@ -16,6 +16,18 @@ STAT_KEY_MAP = {
     "batter_total_bases":"totalBases",
     "total_bases":"totalBases",
     "tb":"totalBases",
+    "batter_home_runs":"homeRuns",
+    "home_runs":"homeRuns",
+    "batter_runs":"runs",
+    "runs":"runs",
+    "batter_runs_batted_in":"rbi",
+    "rbi":"rbi",
+    "batter_walks":"baseOnBalls",
+    "walks":"baseOnBalls",
+    "batter_stolen_bases":"stolenBases",
+    "stolen_bases":"stolenBases",
+    "batter_strikeouts":"strikeOuts",
+    "strikeouts":"strikeOuts",
 }
 
 def _get(url, params=None, timeout=TIMEOUT):
