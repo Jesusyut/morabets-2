@@ -191,6 +191,9 @@
     countEl.textContent = all.length.toLocaleString();
     grid.innerHTML = all.length ? all.map(renderCard).join('') : `<div class="card"><div class="muted">No props found.</div></div>`;
     loader.style.display = 'none';
+    
+    // Prefetch L10 data for visible cards
+    prefetchL10ForVisibleCards(90);
   }
 
   // search filter
@@ -228,6 +231,21 @@
     kpi.style.display = 'none'; kpi.innerHTML = '';
     modal.style.display = 'flex';
 
+    // Check if we have cached data first
+    const card = Array.from(document.querySelectorAll('.card'))
+      .find(el => el.querySelector('.pill')?.textContent?.includes(`${stat} ${line}`) &&
+                  el.querySelector('div[style*="font-weight:700"]')?.textContent === player);
+    const cached = card?.dataset?.l10 ? JSON.parse(card.dataset.l10) : null;
+    if (cached) {
+      const rate = Number(cached.hit_rate || 0);
+      const size = Number(cached.sample_size || 10);
+      const conf = cached.confidence || '';
+      body.innerHTML = `Over in <b>${Math.round(rate*size)}</b> of last <b>${size}</b> games (${Math.round(rate*100)}%)`;
+      kpi.style.display = 'flex';
+      kpi.innerHTML = `<div>Confidence: <b>${conf}</b></div><div>Threshold: <b>${(cached.threshold ?? line ?? 1)}</b></div>`;
+      return; // no network needed
+    }
+
     const mapped = mapStatForContext(stat); // <-- ensures backend receives batter_* names
     const qs = new URLSearchParams({
       player_name: player || '',
@@ -256,6 +274,55 @@
   // initial load
   loadLeague('mlb');
 })();
+
+async function prefetchL10ForVisibleCards(N=90){
+  const cards = Array.from(document.querySelectorAll('.card')).slice(0, N);
+  if (!cards.length) return;
+  // collect unique player/stat/line triples
+  const items = [];
+  const seen = new Set();
+  for (const c of cards) {
+    const title = c.querySelector('div[style*="font-weight:700"]')?.textContent?.trim();
+    const pill  = c.querySelector('.pill')?.textContent || "";
+    const m = pill.match(/^(.+?)\s+([0-9.]+)/);  // "total_bases 1.5"
+    if (!title || !m) continue;
+    const stat = m[1].trim();
+    const line = parseFloat(m[2]);
+    const key = `${title}|${stat}|${line}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // map to backend form (batter_* etc.) — you already have this mapper in the file
+    const mapped = mapStatForContext(stat);
+    items.push({ player_name: title, stat_type: mapped, threshold: line });
+  }
+  if (!items.length) return;
+
+  try{
+    const r = await fetch('/contextual/hit_rates', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({items}) });
+    if (!r.ok) return;
+    const js = await r.json();
+    const byKey = new Map();
+    for (const x of js.results || []) {
+      const k = `${x.player_name||''}|${(x.stat_type||'').toLowerCase()}|${x.threshold}`;
+      byKey.set(k, x);
+    }
+    // attach to cards
+    for (const c of cards) {
+      const title = c.querySelector('div[style*="font-weight:700"]')?.textContent?.trim();
+      const pill  = c.querySelector('.pill')?.textContent || "";
+      const m = pill.match(/^(.+?)\s+([0-9.]+)/);
+      if (!title || !m) continue;
+      const stat = m[1].trim();
+      const line = parseFloat(m[2]);
+      const mapped = mapStatForContext(stat).toLowerCase();
+      const k = `${title}|${mapped}|${line}`;
+      const hit = byKey.get(k);
+      if (hit) {
+        c.dataset.l10 = JSON.stringify(hit);   // allow instant modal
+      }
+    }
+  }catch(e){}
+}
 </script>
 </body>
 </html>

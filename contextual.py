@@ -2,12 +2,29 @@
 import os, math, time
 import requests
 from datetime import date
+from functools import lru_cache
+import json
 
 MLB = "https://statsapi.mlb.com/api/v1"
 TIMEOUT = float(os.getenv("MLB_TIMEOUT","4"))
 
 _session = requests.Session()
 _session.headers.update({"User-Agent":"MoraBets/1.0"})
+
+# --- Add below your existing imports/session ---
+try:
+    from redis import Redis
+    R = Redis.from_url(os.getenv("REDIS_URL","redis://localhost:6379/0"), decode_responses=True)
+except Exception:
+    R = None
+
+def _cache_key(player, stat, th):
+    return f"ctx:{date.today().isoformat()}:{player}:{stat}:{th}"
+
+# Optional tiny in-process fallback cache for hot calls (1k entries)
+@lru_cache(maxsize=1024)
+def _memo_key(k: str) -> str:
+    return k  # lru works on the string key
 
 # Map FE -> StatsAPI stat fields (batter only here; extend if needed)
 STAT_KEY_MAP = {
@@ -90,3 +107,40 @@ def get_contextual_hit_rate(player_name:str, stat_type:str, threshold:float):
         "confidence": _conf_label(rate, n),
         "threshold": float(threshold),
     }
+
+def get_contextual_hit_rate_cached(player_name: str, stat_type: str, threshold: float):
+    """
+    Thin caching wrapper over your existing get_contextual_hit_rate().
+    - First check Redis by per-day key
+    - Then in-process LRU
+    - Compute and backfill both caches on miss
+    """
+    key = _cache_key(player_name, stat_type, threshold)
+
+    # Redis first
+    if R:
+        cached = R.get(key)
+        if cached:
+            return json.loads(cached)
+
+    # in-process second
+    try:
+        payload = json.loads(_memo_key(key))
+        return payload
+    except Exception:
+        pass
+
+    # Compute using your existing function (unchanged)
+    payload = get_contextual_hit_rate(player_name, stat_type, threshold)
+
+    # Store
+    try:
+        if R:
+            R.setex(key, 6*3600, json.dumps(payload))
+        _memo_key.cache_clear()          # keep LRU tidy
+        _memo_key(json.dumps(payload))   # prime LRU with the payload as the value
+        _memo_key(key)                   # pair the key (lru needs the same function input)
+    except Exception:
+        pass
+
+    return payload

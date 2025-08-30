@@ -26,7 +26,8 @@ from probability import implied_probability, calculate_edge, kelly_bet_size, cal
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
 from trends_l10 import annotate_props_with_l10, compute_l10  # NEW
-from contextual import get_contextual_hit_rate
+from contextual import get_contextual_hit_rate_cached
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from team_abbreviations import get_team_abbreviation, format_matchup, TEAM_ABBREVIATIONS
 
@@ -1335,19 +1336,82 @@ def contextual_hit_rate():
     th     = float(request.args.get("threshold", 1))
     if not (player and stat):
         return jsonify({"error":"missing player_name/stat_type"}), 400
-
-    key = f"ctx:{date.today().isoformat()}:{player}:{stat}:{th}"
-    cached = redis.get(key)
-    if cached:
-        return jsonify(json.loads(cached))
-
     try:
-        payload = get_contextual_hit_rate(player, stat, th)  # MLB StatsAPI ONLY
+        return jsonify(get_contextual_hit_rate_cached(player, stat, th))
     except Exception as e:
         return jsonify({"error":"mlb_trend_failed","detail":str(e)}), 502
 
-    redis.setex(key, 6*3600, json.dumps(payload))
-    return jsonify(payload)
+
+@app.post("/contextual/hit_rates")
+def contextual_hit_rates():
+    """
+    Body: {"items":[{"player_name":"X","stat_type":"batter_hits","threshold":0.5}, ...]}
+    Returns: {"results":[{"player_name":...,"stat_type":...,"threshold":...,"hit_rate":...,"sample_size":...,"confidence":"..."}, ...]}
+    """
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not items:
+        return {"results":[]}
+
+    results = []
+    # Limit concurrency to be polite to MLB Stats API
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futs = []
+        for it in items[:200]:  # hard cap
+            p = it.get("player_name"); s = it.get("stat_type"); th = float(it.get("threshold", 1))
+            if not (p and s): 
+                continue
+            futs.append(pool.submit(get_contextual_hit_rate_cached, p, s, th))
+        for f in as_completed(futs):
+            try:
+                results.append(f.result())
+            except Exception:
+                pass
+    return {"results": results}
+
+
+def _prefetch_today_props_and_warm():
+    """
+    Hits your own /player_props?league=mlb&date=YYYY-MM-DD to discover players/stat/lines,
+    warms L10 cache for the first ~120 unique (player, stat, line).
+    """
+    try:
+        import requests
+        base = os.getenv("SELF_BASE", "").rstrip("/")
+        if not base:
+            return
+        today = date.today().isoformat()
+        r = requests.get(f"{base}/player_props", params={"league":"mlb","date":today}, timeout=8)
+        if not r.ok: 
+            return
+        js = r.json()
+        # flatten
+        items = []
+        if isinstance(js, list):
+            items = js
+        elif isinstance(js, dict):
+            for _, arr in js.items():
+                if isinstance(arr, list): items.extend(arr)
+
+        seen = set()
+        batch = []
+        for p in items:
+            nm = p.get("player"); st = p.get("stat"); ln = p.get("line")
+            if not (nm and st and ln is not None): 
+                continue
+            k = (nm, st, ln)
+            if k in seen: 
+                continue
+            seen.add(k)
+            batch.append({"player_name": nm, "stat_type": st, "threshold": float(ln)})
+            if len(batch) >= 120:
+                break
+
+        # one batch call
+        if batch:
+            requests.post(f"{base}/contextual/hit_rates", json={"items": batch}, timeout=30)
+    except Exception:
+        pass
 
 
 def warm_top_props():
@@ -1944,6 +2008,8 @@ scheduler.add_job(
     name="System Health Check",
     replace_existing=True
 )
+
+scheduler.add_job(_prefetch_today_props_and_warm, "interval", minutes=7, id="warm_l10", replace_existing=True)
 
 
 
