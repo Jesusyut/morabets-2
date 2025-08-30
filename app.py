@@ -26,6 +26,7 @@ from probability import implied_probability, calculate_edge, kelly_bet_size, cal
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
 from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id, get_last_10_trend  # NEW
+from props_ncaaf import fetch_ncaaf_player_props
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1113,6 +1114,12 @@ def get_props():
         # Check if No-Vig Mode is enabled
         if USE_NOVIG_ONLY:
             league = (request.args.get("league") or "mlb").lower()
+            
+            # NCAAF branch
+            if league == "ncaaf":
+                props = fetch_ncaaf_player_props()
+                return jsonify({"league":"ncaaf","props":props})
+            
             date_iso = request.args.get("date")  # optional "YYYY-MM-DD"
             min_prob = float(request.args.get("min_prob", "0") or 0)
             books_qs = request.args.get("books")
