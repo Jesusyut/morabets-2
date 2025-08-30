@@ -122,7 +122,7 @@ def resolve_mlb_player_id(name: str) -> Optional[int]:
     if hit is not None:
         return hit
     try:
-        # EXACT endpoint from your working file:
+        # ✅ exact working endpoint (same as your good commit & fantasy.py)
         r = requests.get(
             f"{MLB_STATS_API}/people/search",
             params={"names": name},
@@ -140,23 +140,28 @@ def resolve_mlb_player_id(name: str) -> Optional[int]:
 
 def _game_logs(player_id: int, group: str, season: Optional[int] = None) -> List[Dict[str, Any]]:
     season = season or datetime.utcnow().year
-    # EXACT endpoint from your working file:
-    r = requests.get(
-        f"{MLB_STATS_API}/people/{player_id}/stats",
-        params={"stats": "gameLog", "group": group, "season": season},
-        timeout=STATS_TIMEOUT,
-    )
-    r.raise_for_status()
-    data = r.json() or {}
-    splits = (((data.get("stats") or [])[0] or {}).get("splits") or [])
-    out: List[Dict[str, Any]] = []
-    for s in splits:
-        d = (s.get("date") or s.get("gameDate") or "")
-        st = (s.get("stat") or {})
-        out.append({"date": d, "stat": st})
-    # newest first
-    out.sort(key=lambda x: x["date"], reverse=True)
-    return out
+    try:
+        # ✅ exact working endpoint (no hydrate)
+        r = requests.get(
+            f"{MLB_STATS_API}/people/{player_id}/stats",
+            params={"stats": "gameLog", "group": group, "season": season},
+            timeout=STATS_TIMEOUT,
+        )
+        r.raise_for_status()
+        data = r.json() or {}
+        splits = (((data.get("stats") or [])[0] or {}).get("splits") or [])
+        # normalize to newest-first
+        out = []
+        for s in splits:
+            out.append({
+                "date": s.get("date") or s.get("gameDate") or "",
+                "stat": (s.get("stat") or {})
+            })
+        out.sort(key=lambda x: x["date"], reverse=True)
+        return out
+    except Exception as e:
+        LOG.warning(f"[L10] gameLog failed pid={player_id} group={group} season={season}: {e}")
+        return []
 
 def _val(split: Dict[str, Any], stat_key: str) -> Optional[float]:
     st = split.get("stat") or {}

@@ -25,7 +25,7 @@ from enrichment import load_props_from_file
 from probability import implied_probability, calculate_edge, kelly_bet_size, calculate_parlay_edge
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
-from trends_l10 import annotate_props_with_l10, compute_l10, _resolve_player_id  # NEW
+from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id  # NEW
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1334,7 +1334,7 @@ def labels_endpoint():
 def contextual_hit_rate():
     player = request.args.get("player_name") or request.args.get("player")
     stat   = request.args.get("stat_type") or request.args.get("stat")
-    th     = request.args.get("threshold", None)
+    th     = request.args.get("threshold")
     if not (player and stat and th is not None):
         return {"error":"missing player_name/stat_type/threshold"}, 400
     try:
@@ -1342,19 +1342,16 @@ def contextual_hit_rate():
     except:
         return {"error":"bad threshold"}, 400
 
-    # compute via MLB-only cached function (in trends_l10.py)
-    res = compute_l10(player, stat, th, lookback=int(os.getenv("L10_LOOKBACK","10")))
+    res = compute_l10(player, stat, th, lookback=10)
     if not res:
         return {"error":"no_l10_data"}, 404
 
-    # Map to modal response fields expected by FE
     return {
         "hit_rate":    float(res["rate_over"]),
         "sample_size": int(res["games"]),
         "threshold":   th,
-        # simple confidence label (keep identical to your previous behavior)
         "confidence":  ("high" if (res["games"]>=8 and res["rate_over"]>=0.60)
-                        else ("medium" if (res["games"]>=6 and res["rate_over"]>=0.5) else "low"))
+                        else ("medium" if (res["games"]>=6 and res["rate_over"]>=0.50) else "low"))
     }
 
 
@@ -2659,11 +2656,9 @@ warm_thread.start()
 # Sanity route for player ID resolution
 @app.get("/contextual/_who")
 def who():
-    name = request.args.get("name","Yandy Diaz")
-    try:
-        return {"name": name, "id": _resolve_player_id(name)}
-    except Exception as e:
-        return {"error": str(e)}, 502
+    n = request.args.get("name","Yandy Diaz")
+    pid = resolve_mlb_player_id(n)
+    return {"name": n, "id": pid}
 
 # Flask app startup
 if __name__ == "__main__":
