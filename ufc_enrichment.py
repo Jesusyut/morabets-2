@@ -17,7 +17,6 @@ def _load() -> Dict[str, Any]:
 _BIO = _load()
 
 def lookup_bio(name: str) -> Dict[str, Any]:
-    # simple case-insens map; keys in JSON should be exact fighter names
     for k, v in _BIO.items():
         if k.lower() == (name or "").lower():
             return {

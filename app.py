@@ -26,9 +26,15 @@ from probability import implied_probability, calculate_edge, kelly_bet_size, cal
 from prop_deduplication import deduplicate_props_by_player, get_stat_display_name, get_player_avatar_url
 from pairing import build_props_novig
 from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id, get_last_10_trend  # NEW
-from props_ncaaf import fetch_ncaaf_player_props
-from nfl_odds_api import fetch_nfl_player_props
-from props_ufc import fetch_ufc_markets
+# Optional compression (don't crash if missing)
+try:
+    from flask_compress import Compress
+    Compress(app)
+except Exception:
+    pass
+
+log = logging.getLogger("app")
+log.setLevel(logging.INFO)
 
 def _norm_league(s: str | None) -> str:
     t = (s or "").strip().lower()
@@ -37,10 +43,50 @@ def _norm_league(s: str | None) -> str:
         "cfb": "ncaaf",
         "college_football": "ncaaf",
         "ncaaf": "ncaaf",
-        # keep other leagues mapping to themselves
-        "mlb": "mlb", "nfl": "nfl", "nba": "nba", "nhl": "nhl", "ufc": "ufc"
+        "nfl": "nfl",
+        "mlb": "mlb",
+        "nba": "nba",
+        "nhl": "nhl",
+        "mma": "ufc",
+        "ufc": "ufc",
     }
     return aliases.get(t, t)
+
+# Safe imports
+# MLB
+try:
+    from odds_api import fetch_mlb_player_props as _fetch_mlb_player_props
+except Exception:
+    try:
+        from odds_api import fetch_player_props as _fetch_mlb_player_props
+    except Exception:
+        _fetch_mlb_player_props = None
+
+# NFL
+try:
+    from nfl_odds_api import fetch_nfl_player_props as _fetch_nfl_player_props
+except Exception:
+    try:
+        from nfl_odds_api import fetch_nfl_props as _fetch_nfl_player_props
+    except Exception:
+        _fetch_nfl_player_props = None
+
+# NCAAF
+try:
+    from props_ncaaf import fetch_ncaaf_player_props as _fetch_ncaaf_player_props
+except Exception:
+    _fetch_ncaaf_player_props = None
+
+# UFC
+try:
+    from props_ufc import fetch_ufc_props as _fetch_ufc_props
+except Exception:
+    try:
+        from props_ufc import fetch_ufc_markets as _fetch_ufc_props
+    except Exception:
+        _fetch_ufc_props = None
+
+
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1125,32 +1171,42 @@ def get_mlb_props():
 def get_props():
     """Get enriched props grouped by matchup with optional filtering (Underdog Fantasy style)"""
     try:
-        # Check if No-Vig Mode is enabled
-        if USE_NOVIG_ONLY:
-            league_in = request.args.get("league")
-            league = _norm_league(league_in)
-            date_str = request.args.get("date")  # optional YYYY-MM-DD
-            
-            # NCAAF branch
+        league_in = request.args.get("league")
+        league = _norm_league(league_in)
+        date_str = request.args.get("date")  # YYYY-MM-DD optional
+        log.info("props: league=%s (norm=%s) date=%s", league_in, league, date_str)
+
+        try:
+            if league == "mlb":
+                assert _fetch_mlb_player_props, "MLB fetcher not available"
+                props = _fetch_mlb_player_props()
+                props.sort(key=lambda p: ((p.get("fair") or {}).get("prob") or {}).get("over") or 0.0, reverse=True)
+                return jsonify({"league": "mlb", "props": props})
+
+            if league == "nfl":
+                assert _fetch_nfl_player_props, "NFL fetcher not available"
+                props = _fetch_nfl_player_props()
+                props.sort(key=lambda p: ((p.get("fair") or {}).get("prob") or {}).get("over") or 0.0, reverse=True)
+                return jsonify({"league": "nfl", "props": props})
+
             if league == "ncaaf":
-                props = fetch_ncaaf_player_props(date=date_str)  # new signature below
-                # (optional) sort strongest first like MLB
+                assert _fetch_ncaaf_player_props, "NCAAF fetcher not available"
+                props = _fetch_ncaaf_player_props(date=date_str)
                 props.sort(key=lambda p: ((p.get("fair") or {}).get("prob") or {}).get("over") or 0.0, reverse=True)
                 return jsonify({"league": "ncaaf", "props": props})
-            
-            # NFL branch
-            if league == "nfl":
-                props = fetch_nfl_player_props()
-                return jsonify({"league":"nfl","props": props})
-            
-            # UFC branch
-            if league in ("ufc","mma"):
-                fights = fetch_ufc_markets(date=date_str)
-                return jsonify({"league":"ufc","fights": fights})
-            
-            # fallback if unknown
+
+            if league == "ufc":
+                assert _fetch_ufc_props, "UFC fetcher not available"
+                fights = _fetch_ufc_props(date=date_str)
+                return jsonify({"league": "ufc", "fights": fights})
+
             raise ValueError(f"Unsupported league: {league_in}")
-            
+        except Exception as e:
+            log.exception("props endpoint failure")
+            return jsonify({"error": str(e)}), 503
+
+        # Legacy MLB enrichment flow (if no-vig mode is disabled)
+        if not USE_NOVIG_ONLY:
             date_iso = request.args.get("date")  # optional "YYYY-MM-DD"
             min_prob = float(request.args.get("min_prob", "0") or 0)
             books_qs = request.args.get("books")

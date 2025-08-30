@@ -16,7 +16,6 @@ def novig_two_way(a: int, b: int) -> tuple[float,float]:
     return pa/z, pb/z
 
 def novig_multiway(odds_list: List[int]) -> List[float]:
-    """Normalize implied probs across N outcomes (e.g., KO/Sub/Dec)."""
     probs = [american_to_prob(o) for o in odds_list]
     z = sum(probs) or 1.0
     return [p/z for p in probs]
