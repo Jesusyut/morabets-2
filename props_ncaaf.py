@@ -1,7 +1,7 @@
 # props_ncaaf.py
 from __future__ import annotations
 from collections import defaultdict
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 import time
 
 from odds_client_ncaaf import list_events_ncaaf, event_odds_ncaaf
@@ -70,12 +70,12 @@ def _attach_fair(row: Dict[str,Any], over: Dict[str,Any] | None, under: Dict[str
         row["book"] = tick["book"]
     row["fair"] = fair
 
-def fetch_ncaaf_player_props(hours_ahead: int = 48) -> List[Dict[str,Any]]:
+def fetch_ncaaf_player_props(hours_ahead: int = 48, date: Optional[str] = None) -> List[Dict[str,Any]]:
     """
     Returns flat list of props with fields:
       league, matchup, player, stat, line, fair{prob,american}, shop{over,under}, book, side
     """
-    events = list_events_ncaaf(hours_ahead=hours_ahead)
+    events = list_events_ncaaf(hours_ahead=hours_ahead, date=date)
     all_props: List[Dict[str,Any]] = []
 
     # split markets into two batches to keep payloads small

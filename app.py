@@ -28,6 +28,18 @@ from pairing import build_props_novig
 from trends_l10 import compute_l10, annotate_props_with_l10, resolve_mlb_player_id, get_last_10_trend  # NEW
 from props_ncaaf import fetch_ncaaf_player_props
 from nfl_odds_api import fetch_nfl_player_props
+
+def _norm_league(s: str | None) -> str:
+    t = (s or "").strip().lower()
+    aliases = {
+        "ncaa": "ncaaf",
+        "cfb": "ncaaf",
+        "college_football": "ncaaf",
+        "ncaaf": "ncaaf",
+        # keep other leagues mapping to themselves
+        "mlb": "mlb", "nfl": "nfl", "nba": "nba", "nhl": "nhl", "ufc": "ufc"
+    }
+    return aliases.get(t, t)
 from contextual import get_contextual_hit_rate_cached
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -1114,17 +1126,24 @@ def get_props():
     try:
         # Check if No-Vig Mode is enabled
         if USE_NOVIG_ONLY:
-            league = (request.args.get("league") or "mlb").lower()
+            league_in = request.args.get("league")
+            league = _norm_league(league_in)
+            date_str = request.args.get("date")  # optional YYYY-MM-DD
             
             # NCAAF branch
             if league == "ncaaf":
-                props = fetch_ncaaf_player_props()
-                return jsonify({"league":"ncaaf","props":props})
+                props = fetch_ncaaf_player_props(date=date_str)  # new signature below
+                # (optional) sort strongest first like MLB
+                props.sort(key=lambda p: ((p.get("fair") or {}).get("prob") or {}).get("over") or 0.0, reverse=True)
+                return jsonify({"league": "ncaaf", "props": props})
             
             # NFL branch
             if league == "nfl":
                 props = fetch_nfl_player_props()
                 return jsonify({"league":"nfl","props": props})
+            
+            # fallback if unknown
+            raise ValueError(f"Unsupported league: {league_in}")
             
             date_iso = request.args.get("date")  # optional "YYYY-MM-DD"
             min_prob = float(request.args.get("min_prob", "0") or 0)

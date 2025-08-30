@@ -1,7 +1,7 @@
 # odds_client_ncaaf.py
 from __future__ import annotations
 import os, time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as tz
 from typing import Any, Dict, List, Optional
 import requests
 
@@ -22,14 +22,19 @@ def _get_json(path: str, **params) -> Dict[str, Any]:
     r.raise_for_status()
     return r.json() or {}
 
-def list_events_ncaaf(hours_ahead: int = 48) -> List[Dict[str, Any]]:
+def list_events_ncaaf(hours_ahead: int = 48, date: Optional[str] = None) -> List[Dict[str, Any]]:
     from markets_ncaaf import NCAAF_SPORT_KEY
-    now = datetime.utcnow().replace(microsecond=0)
-    end = now + timedelta(hours=hours_ahead)
+    if date:
+        # expect YYYY-MM-DD; use UTC day window
+        start = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=tz.utc, hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+    else:
+        start = datetime.utcnow().replace(tzinfo=tz.utc, microsecond=0)
+        end = start + timedelta(hours=hours_ahead)
     return _get_json(
         f"/sports/{NCAAF_SPORT_KEY}/events",
-        commenceTimeFrom=now.isoformat()+"Z",
-        commenceTimeTo=end.isoformat()+"Z",
+        commenceTimeFrom=start.isoformat().replace("+00:00","Z"),
+        commenceTimeTo=end.isoformat().replace("+00:00","Z"),
     )
 
 def event_odds_ncaaf(event_id: str, markets: List[str]) -> Dict[str, Any]:
