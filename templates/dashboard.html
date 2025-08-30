@@ -218,6 +218,9 @@
     loadLeague(btn.dataset.league);
   });
 
+  // Put this near your other globals
+  const API_BASE = ""; // same-origin API; if your backend is on another host, set it explicitly
+
   // ---- Trend modal plumbing ----
   window.trendClose = function(){ document.getElementById('trendModal').style.display = 'none'; };
   window.showTrend = async function(encoded){
@@ -259,22 +262,25 @@
       return; // no network needed
     }
 
-    const mapped = mapStatForContext(stat); // <-- ensures backend receives batter_* names
+    // inside showTrend(), before the fetch loop:
+    const mapped = mapStatForContext(stat);
     const qs = new URLSearchParams({
       player_name: player || '',
       stat_type: mapped || '',
       threshold: (line ?? 1).toString()
     });
-    const tryUrls = [
-      `/contextual/hit_rate?${qs.toString()}`,
-      `/contextual/hit-rate?${qs.toString()}`,
-      `/contextual?${qs.toString()}`
-    ];
+    const url = `${API_BASE}/contextual/hit_rate?${qs.toString()}`;
+    console.log("[L10] fetch", url);
+
+    // replace the multi-URL loop with a single exact route:
     let resp = null;
-    for(const u of tryUrls){
-      try{ const r = await fetch(u); if(r.ok){ resp = await r.json(); break; } }catch(e){}
+    try {
+      const r = await fetch(url, { credentials: "omit" });
+      if (r.ok) resp = await r.json();
+    } catch(e) {
+      console.error("[L10] fetch failed:", e);
     }
-    if(!resp){ body.textContent='Could not load last 10 games.'; return; }
+    if (!resp) { body.textContent='Could not load last 10 games.'; return; }
 
     const rate = Number(resp.hit_rate ?? 0);
     const size = Number(resp.sample_size ?? 10);

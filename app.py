@@ -220,7 +220,8 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "mora-bets-secret-key-change-in-production")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-CORS(app)
+# allow calls from the same origin (and anywhere, if needed)
+CORS(app, resources={r"/contextual*": {"origins": "*"}})
 
 # Enable gzip/brotli if available (and not disabled by env)
 if _HAS_COMPRESS and os.getenv("ENABLE_COMPRESSION", "1") == "1":
@@ -231,6 +232,19 @@ if _HAS_COMPRESS and os.getenv("ENABLE_COMPRESSION", "1") == "1":
         app.logger.warning(f"Compression init failed: {e}")
 else:
     app.logger.info("Compression disabled (missing lib or ENABLE_COMPRESSION=0)")
+
+# Loud logging for contextual endpoints
+log = logging.getLogger("contextual")
+log.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(message)s"))
+if not any(isinstance(h, logging.StreamHandler) for h in log.handlers):
+    log.addHandler(handler)
+
+@app.before_request
+def _log_contextual_requests():
+    if request.path.startswith("/contextual"):
+        log.info("REQ %s qs=%s ua=%s", request.path, dict(request.args), request.headers.get("User-Agent"))
 
 # --- Boot logging with git info ---
 def _git_info():
@@ -1330,29 +1344,38 @@ def labels_endpoint():
     return jsonify(labels), 200
 
 
-@app.route("/contextual/hit_rate")
+@app.get("/contextual/hit_rate")
 def contextual_hit_rate():
     player = request.args.get("player_name") or request.args.get("player")
     stat   = request.args.get("stat_type") or request.args.get("stat")
-    th     = request.args.get("threshold")
-    if not (player and stat and th is not None):
+    th_raw = request.args.get("threshold")
+    if not (player and stat and th_raw is not None):
+        log.warning("BAD_ARGS player=%s stat=%s th=%s", player, stat, th_raw)
         return {"error":"missing player_name/stat_type/threshold"}, 400
     try:
-        th = float(th)
-    except:
+        th = float(th_raw)
+    except ValueError:
+        log.warning("BAD_THRESHOLD th=%s", th_raw)
         return {"error":"bad threshold"}, 400
 
-    res = compute_l10(player, stat, th, lookback=10)
-    if not res:
-        return {"error":"no_l10_data"}, 404
-
-    return {
-        "hit_rate":    float(res["rate_over"]),
-        "sample_size": int(res["games"]),
-        "threshold":   th,
-        "confidence":  ("high" if (res["games"]>=8 and res["rate_over"]>=0.60)
-                        else ("medium" if (res["games"]>=6 and res["rate_over"]>=0.50) else "low"))
-    }
+    log.info("HIT_RATE player=%s stat=%s th=%s", player, stat, th)
+    try:
+        res = compute_l10(player, stat, th, lookback=10)
+        if not res:
+            log.warning("NO_L10 player=%s stat=%s th=%s", player, stat, th)
+            return {"error":"no_l10_data"}, 404
+        payload = {
+            "hit_rate":    float(res["rate_over"]),
+            "sample_size": int(res["games"]),
+            "threshold":   th,
+            "confidence":  ("high" if (res["games"]>=8 and res["rate_over"]>=0.60)
+                            else ("medium" if (res["games"]>=6 and res["rate_over"]>=0.50) else "low"))
+        }
+        log.info("OK_RATE player=%s stat=%s th=%s res=%s", player, stat, th, payload)
+        return jsonify(payload)
+    except Exception as e:
+        log.exception("L10_FAIL player=%s stat=%s th=%s", player, stat, th)
+        return {"error":"mlb_trend_failed","detail":str(e)}, 502
 
 
 @app.post("/contextual/hit_rates")
@@ -2653,12 +2676,19 @@ init_thread.start()
 warm_thread = Thread(target=warm_top_props, daemon=True)
 warm_thread.start()
 
-# Sanity route for player ID resolution
+# Ping route to confirm the app is serving and logs are printing
+@app.get("/contextual/_ping")
+def contextual_ping():
+    return {"ok": True, "ts": datetime.utcnow().isoformat() + "Z"}
+
+# Who route to confirm player resolver hits MLB and logs
 @app.get("/contextual/_who")
-def who():
-    n = request.args.get("name","Yandy Diaz")
-    pid = resolve_mlb_player_id(n)
-    return {"name": n, "id": pid}
+def contextual_who():
+    name = request.args.get("name")
+    if not name:
+        return {"error":"missing name"}, 400
+    pid = resolve_mlb_player_id(name)
+    return {"name": name, "id": pid}
 
 # Flask app startup
 if __name__ == "__main__":
